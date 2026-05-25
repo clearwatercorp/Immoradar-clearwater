@@ -2,16 +2,15 @@ import os
 import json
 import time
 import threading
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_file
 from curl_cffi import requests as curl_requests
 
-app = Flask(__name__, static_folder=".")
+app = Flask(__name__)
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
 PORT       = int(os.environ.get("PORT", 3000))
-CACHE_TTL  = 15 * 60  # 15 min
-IDF_REGION = "12"     # Île-de-France
-IMMO_CAT   = "9"      # Ventes immobilières
+CACHE_TTL  = 15 * 60
+IDF_REGION = "12"
+IMMO_CAT   = "9"
 PRIX_MIN   = 400000
 PRIX_MAX   = 800000
 
@@ -26,28 +25,24 @@ KEYWORDS = [
     "maison de ville",
 ]
 
-# ─── CACHE ────────────────────────────────────────────────────────────────────
-_cache = {"data": [], "ts": 0, "lock": threading.Lock()}
+_cache = {"data": [], "ts": 0}
+_lock  = threading.Lock()
 
-# ─── SESSION curl_cffi (simule Chrome, bypass TLS fingerprinting) ─────────────
 def make_session():
-    s = curl_requests.Session(impersonate="chrome120")
-    return s
+    return curl_requests.Session(impersonate="chrome120")
 
 SESSION = make_session()
 
-# ─── APPEL API LEBONCOIN ──────────────────────────────────────────────────────
 def search_lbc(keyword, offset=0, limit=35):
     headers = {
         "accept": "*/*",
-        "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+        "accept-language": "fr-FR,fr;q=0.9",
         "api_key": "ba0c2dad52b3ec",
         "content-type": "application/json",
         "origin": "https://www.leboncoin.fr",
         "referer": "https://www.leboncoin.fr/recherche",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
-
     payload = {
         "limit": limit,
         "limit_alu": 3,
@@ -61,18 +56,14 @@ def search_lbc(keyword, offset=0, limit=35):
             "location": {"regions": [IDF_REGION]},
             "enums": {
                 "ad_type": ["offer"],
-                "real_estate_type": ["1", "5"],  # 1=maison, 5=autre (immeuble)
+                "real_estate_type": ["1", "5"],
             },
             "ranges": {
                 "price": {"min": PRIX_MIN, "max": PRIX_MAX},
             },
-            "keywords": {
-                "text": keyword,
-                "type": "all",
-            },
+            "keywords": {"text": keyword, "type": "all"},
         },
     }
-
     try:
         resp = SESSION.post(
             "https://api.leboncoin.fr/finder/search",
@@ -80,58 +71,48 @@ def search_lbc(keyword, offset=0, limit=35):
             json=payload,
             timeout=15,
         )
+        print(f"[LBC] {keyword} → HTTP {resp.status_code}")
         if resp.status_code == 200:
             return resp.json().get("ads", [])
-        else:
-            print(f"[LBC] {keyword} → HTTP {resp.status_code}")
-            return []
+        return []
     except Exception as e:
         print(f"[LBC] {keyword} → erreur: {e}")
         return []
 
-# ─── PARSING ANNONCE ──────────────────────────────────────────────────────────
 def parse_ad(ad):
     try:
         prix_list = ad.get("price", [0])
         prix = prix_list[0] if prix_list else 0
         if not (PRIX_MIN <= prix <= PRIX_MAX):
             return None
-
-        loc = ad.get("location", {})
-        ville = loc.get("city", loc.get("region_name", "Île-de-France"))
-        dept = loc.get("department_id", "")
-
-        attrs = {a["key"]: a.get("value_label", a.get("value", "")) for a in ad.get("attributes", [])}
+        loc     = ad.get("location", {})
+        ville   = loc.get("city", loc.get("region_name", "Île-de-France"))
+        attrs   = {a["key"]: a.get("value_label", a.get("value", "")) for a in ad.get("attributes", [])}
         surface = 0
-        try:
-            surface = int(attrs.get("square", 0))
-        except:
-            pass
-
+        try: surface = int(attrs.get("square", 0))
+        except: pass
         return {
-            "id":       ad.get("list_id"),
-            "titre":    ad.get("subject", ""),
-            "desc":     ad.get("body", ""),
-            "prix":     prix,
-            "ville":    ville,
-            "dept":     dept,
-            "surface":  surface,
-            "date":     ad.get("first_publication_date", ""),
-            "link":     ad.get("url", f"https://www.leboncoin.fr/annonces/{ad.get('list_id')}"),
-            "image":    (ad.get("images") or {}).get("thumb_url", ""),
+            "id":      ad.get("list_id"),
+            "titre":   ad.get("subject", ""),
+            "desc":    ad.get("body", ""),
+            "prix":    prix,
+            "ville":   ville,
+            "surface": surface,
+            "date":    ad.get("first_publication_date", ""),
+            "link":    ad.get("url", f"https://www.leboncoin.fr/annonces/{ad.get('list_id')}"),
+            "image":   (ad.get("images") or {}).get("thumb_url", ""),
         }
     except Exception as e:
         print(f"[parse] erreur: {e}")
         return None
 
-# ─── SCRAPING COMPLET ─────────────────────────────────────────────────────────
 def scrape_all():
-    print("[scrape] Démarrage scraping LeBonCoin...")
+    global SESSION
+    print("[scrape] Démarrage...")
     seen_ids = set()
     results  = []
-
     for kw in KEYWORDS:
-        ads = search_lbc(kw, offset=0, limit=35)
+        ads = search_lbc(kw)
         for ad in ads:
             ad_id = ad.get("list_id")
             if ad_id in seen_ids:
@@ -140,45 +121,46 @@ def scrape_all():
             parsed = parse_ad(ad)
             if parsed:
                 results.append(parsed)
-        time.sleep(1)  # pause entre requêtes
-
-    print(f"[scrape] {len(results)} annonces récupérées")
+        time.sleep(2)
+    print(f"[scrape] {len(results)} annonces")
+    if not results:
+        print("[scrape] 0 résultats — recréation session")
+        SESSION = make_session()
     return results
 
-# ─── REFRESH CACHE ────────────────────────────────────────────────────────────
 def refresh_cache():
-    global SESSION
-    with _cache["lock"]:
+    with _lock:
         try:
             data = scrape_all()
             if data:
                 _cache["data"] = data
                 _cache["ts"]   = time.time()
-                print(f"[cache] Mis à jour: {len(data)} annonces")
-            else:
-                # Si DataDome bloque, recréer la session
-                print("[cache] Aucun résultat — recréation session")
-                SESSION = make_session()
         except Exception as e:
             print(f"[cache] Erreur: {e}")
 
 def auto_refresh():
+    print("[thread] Démarré")
     while True:
         refresh_cache()
         time.sleep(CACHE_TTL)
 
-# ─── ROUTES ───────────────────────────────────────────────────────────────────
+# Démarrage du thread au niveau module (fonctionne avec gunicorn)
+print("[module] Lancement thread scraping...")
+_t = threading.Thread(target=auto_refresh, daemon=True)
+_t.start()
+print("[module] Thread lancé.")
+
 @app.route("/")
 def index():
-    return send_from_directory("public", "index.html")
+    return send_file("index.html")
 
 @app.route("/api/annonces")
 def api_annonces():
     age = time.time() - _cache["ts"]
     return jsonify({
-        "ok":      True,
-        "count":   len(_cache["data"]),
-        "age_min": round(age / 60, 1),
+        "ok":       True,
+        "count":    len(_cache["data"]),
+        "age_min":  round(age / 60, 1),
         "annonces": _cache["data"],
     })
 
@@ -186,18 +168,5 @@ def api_annonces():
 def health():
     return jsonify({"status": "ok", "cached": len(_cache["data"])})
 
-# ─── DÉMARRAGE ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print(f"[start] ImmoRadar démarrage sur port {PORT}")
-    print("[start] Lancement thread scraping...")
-    t = threading.Thread(target=auto_refresh, daemon=True)
-    t.start()
-    print("[start] Thread lancé, démarrage Flask...")
     app.run(host="0.0.0.0", port=PORT)
-else:
-    # Démarrage via gunicorn
-    print(f"[gunicorn] ImmoRadar démarrage...")
-    print("[gunicorn] Lancement thread scraping...")
-    t = threading.Thread(target=auto_refresh, daemon=True)
-    t.start()
-    print("[gunicorn] Thread lancé.")
