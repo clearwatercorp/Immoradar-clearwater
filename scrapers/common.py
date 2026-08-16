@@ -1,9 +1,5 @@
 import math
-import re
-
-from config import CENTER_LAT, CENTER_LON, RADIUS_KM, SURFACE_MIN, PRICE_MAX, ROOMS_MIN
-
-STUDIO_RE = re.compile(r"\bstudio\b|\bT1\b|\bF1\b|\b1\s*pi[eè]ce\b", re.IGNORECASE)
+from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MIN, PRICE_MAX_HARD_CAP
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -24,27 +20,20 @@ def distance_from_center(lat, lon):
         return None
 
 
-def looks_like_studio(titre="", desc="", pieces=None):
-    if pieces:
-        return pieces < ROOMS_MIN
-    return bool(STUDIO_RE.search(f"{titre or ''} {desc or ''}"))
-
-
 def passes_filters(ad):
-    """Filtre une annonce normalisée selon la zone (rayon) et les critères
-    (surface mini, loyer maxi, pas de studio). Annonce sans coordonnées ou
-    sans surface connue = rejetée (on préfère rater une annonce plutôt que
-    d'en afficher une potentiellement hors zone)."""
+    """Filtre une annonce de vente normalisée : dans la zone, prix et
+    surface exploitables. Pas de filtre sur le type de bien ou la surface
+    minimale ici — les deux stratégies (location saisonnière / marchand de
+    biens) évaluent chaque bien et se chargent elles-mêmes de la pertinence
+    (studio/T2 vs maison de ville, etc.)."""
     dist = distance_from_center(ad.get("lat"), ad.get("lon"))
     if dist is None or dist > RADIUS_KM:
         return False
-    surface = ad.get("surface") or 0
-    if surface < SURFACE_MIN:
-        return False
     prix = ad.get("prix") or 0
-    if prix <= 0 or prix > PRICE_MAX:
+    if prix <= PRICE_MIN or prix > PRICE_MAX_HARD_CAP:
         return False
-    if looks_like_studio(ad.get("titre", ""), ad.get("desc", ""), ad.get("pieces")):
+    surface = ad.get("surface") or 0
+    if surface <= 0:
         return False
     ad["distance_km"] = round(dist, 1)
     return True

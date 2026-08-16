@@ -1,4 +1,4 @@
-"""Scraper PAP.fr (Particulier à Particulier) — annonces de particuliers,
+"""Scraper PAP.fr (Particulier à Particulier) — ventes de particuliers,
 donc peu recroisées avec Leboncoin. Anti-bot léger.
 
 ⚠️ Endpoint reverse-engineered et NON testé en conditions réelles (le
@@ -10,12 +10,12 @@ adapter `SEARCH_URL` / `parse_listing_page` en conséquence.
 
 from scrapfly import ScrapeConfig
 
-from config import PRICE_MAX, SURFACE_MIN, ROOMS_MIN
+from config import PRICE_MAX_HARD_CAP
 from .jsonld import extract_jsonld_blocks, normalize_jsonld_listing
 
 SEARCH_URL = (
-    "https://www.pap.fr/annonce/locations-villeneuve-loubet-06270"
-    f"?surface_min={SURFACE_MIN}&prix_max={PRICE_MAX}&nb_pieces_min={ROOMS_MIN}"
+    "https://www.pap.fr/annonce/vente-villeneuve-loubet-06270"
+    f"?prix_max={PRICE_MAX_HARD_CAP}"
 )
 
 

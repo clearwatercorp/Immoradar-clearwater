@@ -2,10 +2,11 @@ import json
 
 from scrapfly import ScrapeConfig
 
-from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MAX, SURFACE_MIN, ROOMS_MIN
+from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MAX_HARD_CAP
 
-CATEGORY_LOCATION = "10"        # "Locations" (catégorie immobilier LBC)
+CATEGORY_VENTE = "9"            # "Ventes immobilières" (catégorie immobilier LBC)
 REAL_ESTATE_TYPES = ["1", "2"]  # maison, appartement
+TYPE_LABELS = {"1": "maison", "2": "appartement"}
 
 
 def search(client):
@@ -29,7 +30,7 @@ def search(client):
         "extend": True,
         "listing_source": "direct-search",
         "filters": {
-            "category": {"id": CATEGORY_LOCATION},
+            "category": {"id": CATEGORY_VENTE},
             "location": {
                 "area": {"lat": CENTER_LAT, "lng": CENTER_LON, "radius": int(RADIUS_KM * 1000)},
             },
@@ -38,9 +39,7 @@ def search(client):
                 "real_estate_type": REAL_ESTATE_TYPES,
             },
             "ranges": {
-                "price": {"max": PRICE_MAX},
-                "square": {"min": SURFACE_MIN},
-                "rooms": {"min": ROOMS_MIN},
+                "price": {"max": PRICE_MAX_HARD_CAP},
             },
         },
     }
@@ -84,20 +83,24 @@ def parse_ad(ad):
         except (TypeError, ValueError):
             pass
 
+        type_raw = attrs.get("real_estate_type", "")
+        type_bien = TYPE_LABELS.get(str(type_raw), str(type_raw).lower()) if type_raw else ""
+
         return {
-            "id":      f"lbc-{ad.get('list_id')}",
-            "source":  "Leboncoin",
-            "titre":   ad.get("subject", ""),
-            "desc":    ad.get("body", ""),
-            "prix":    prix,
-            "ville":   loc.get("city", ""),
-            "surface": surface,
-            "pieces":  pieces,
-            "lat":     loc.get("lat"),
-            "lon":     loc.get("lng"),
-            "date":    ad.get("first_publication_date", ""),
-            "link":    ad.get("url", f"https://www.leboncoin.fr/annonces/{ad.get('list_id')}"),
-            "image":   (ad.get("images") or {}).get("thumb_url", ""),
+            "id":        f"lbc-{ad.get('list_id')}",
+            "source":    "Leboncoin",
+            "titre":     ad.get("subject", ""),
+            "desc":      ad.get("body", ""),
+            "prix":      prix,
+            "ville":     loc.get("city", ""),
+            "surface":   surface,
+            "pieces":    pieces,
+            "type_bien": type_bien,
+            "lat":       loc.get("lat"),
+            "lon":       loc.get("lng"),
+            "date":      ad.get("first_publication_date", ""),
+            "link":      ad.get("url", f"https://www.leboncoin.fr/annonces/{ad.get('list_id')}"),
+            "image":     (ad.get("images") or {}).get("thumb_url", ""),
         }
     except Exception as e:
         print(f"[leboncoin] parse erreur: {e}")

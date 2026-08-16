@@ -11,13 +11,15 @@ Network / Elements) et adapter `SEARCH_URL` / `parse_listing_page`.
 
 from scrapfly import ScrapeConfig
 
-from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MAX, SURFACE_MIN, ROOMS_MIN
+from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MAX_HARD_CAP
 from .jsonld import extract_jsonld_blocks, normalize_jsonld_listing
 
+# projects=1 = vente (achat) sur SeLoger, projects=2 = location — à vérifier
+# en conditions réelles, cf. avertissement en tête de fichier.
 SEARCH_URL = (
     "https://www.seloger.com/list.htm?types=1,2&projects=1"
     f"&places=[{{lat:{CENTER_LAT},lng:{CENTER_LON},radius:{int(RADIUS_KM * 1000)}}}]"
-    f"&price=NaN/{PRICE_MAX}&surface={SURFACE_MIN}/NaN&rooms={ROOMS_MIN}&enterprise=0&qsVersion=1.0"
+    f"&price=NaN/{PRICE_MAX_HARD_CAP}&enterprise=0&qsVersion=1.0"
 )
 
 

@@ -8,6 +8,7 @@ import json
 from bs4 import BeautifulSoup
 
 LISTING_TYPES = {"Product", "Apartment", "House", "SingleFamilyResidence", "RealEstateListing"}
+TYPE_BIEN_MAP = {"Apartment": "appartement", "House": "maison", "SingleFamilyResidence": "maison"}
 
 
 def extract_jsonld_blocks(html):
@@ -79,12 +80,21 @@ def normalize_jsonld_listing(item, source):
     if not uid:
         return None
 
+    type_bien = next((TYPE_BIEN_MAP[t] for t in types if t in TYPE_BIEN_MAP), "")
+    if not type_bien:
+        blob = f"{item.get('name','')} {item.get('description','')}".lower()
+        if "maison" in blob:
+            type_bien = "maison"
+        elif "appartement" in blob:
+            type_bien = "appartement"
+
     return {
-        "id":      f"{source.lower().replace(chr(39), '')}-{uid}",
-        "source":  source,
-        "titre":   item.get("name", ""),
-        "desc":    item.get("description", ""),
-        "prix":    prix,
+        "id":        f"{source.lower().replace(chr(39), '')}-{uid}",
+        "source":    source,
+        "titre":     item.get("name", ""),
+        "desc":      item.get("description", ""),
+        "prix":      prix,
+        "type_bien": type_bien,
         "ville":   address.get("addressLocality", ""),
         "surface": surface,
         "pieces":  pieces,

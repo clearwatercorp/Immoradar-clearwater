@@ -21,6 +21,7 @@ def init_db():
                 ville        TEXT,
                 surface      INTEGER,
                 pieces       INTEGER,
+                type_bien    TEXT,
                 lat          REAL,
                 lon          REAL,
                 distance_km  REAL,
@@ -48,12 +49,13 @@ def upsert_ads(ads):
                 new_ids.append(ad["id"])
                 conn.execute("""
                     INSERT INTO annonces
-                        (id, source, titre, desc, prix, ville, surface, pieces,
+                        (id, source, titre, desc, prix, ville, surface, pieces, type_bien,
                          lat, lon, distance_km, date_annonce, link, image, first_seen, last_seen)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     ad["id"], ad["source"], ad.get("titre", ""), ad.get("desc", ""),
                     ad.get("prix", 0), ad.get("ville", ""), ad.get("surface", 0), ad.get("pieces"),
+                    ad.get("type_bien", ""),
                     ad.get("lat"), ad.get("lon"), ad.get("distance_km"),
                     ad.get("date", ""), ad.get("link", ""), ad.get("image", ""),
                     now, now,

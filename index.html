@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>ImmoRadar Location</title>
+<title>ImmoRadar Invest</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/static/leaflet.css"/>
 <script src="/static/leaflet.js"></script>
@@ -20,7 +20,7 @@
   .logo span{font-size:13px;font-weight:400;color:#3a6a9a;font-family:'DM Sans',sans-serif}
   .subtitle{font-size:11px;color:#2a4a6a;margin-top:3px}
   .topbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .search-input{background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;color:#c8dff0;padding:7px 12px;font-size:13px;outline:none;width:180px}
+  .search-input{background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;color:#c8dff0;padding:7px 12px;font-size:13px;outline:none;width:170px}
   .search-input:focus{border-color:#2a5a8a}
   .btn-refresh,.view-toggle button{background:#1a3a5a;border:1px solid #2a5a8a;border-radius:8px;color:#7ac3f0;padding:7px 14px;font-size:13px;font-weight:600;transition:background 0.15s}
   .btn-refresh:hover,.view-toggle button:hover{background:#1e4a70}
@@ -28,21 +28,32 @@
   .view-toggle{display:flex;gap:4px;background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;padding:3px}
   .view-toggle button{background:transparent;border:none;color:#3a6a9a;padding:6px 12px}
   .view-toggle button.active{background:#1a3a5a;color:#7ac3f0}
-  .main{max-width:980px;margin:0 auto;padding:22px 16px}
+  .main{max-width:1000px;margin:0 auto;padding:22px 16px}
+
+  .strategy-tabs{display:flex;gap:10px;margin-bottom:16px}
+  .strategy-tab{flex:1;background:#0d1621;border:1px solid #1a2d40;border-radius:12px;padding:14px 18px;text-align:left;transition:all 0.15s}
+  .strategy-tab:hover{border-color:#2a5a8a}
+  .strategy-tab.active{background:linear-gradient(135deg,#12233a,#0d1621);border-color:#2a6aaa}
+  .strategy-tab-title{font-size:14px;font-weight:700;color:#c8dff0;margin-bottom:3px}
+  .strategy-tab.active .strategy-tab-title{color:#7ac3f0}
+  .strategy-tab-sub{font-size:11px;color:#4a7a9a}
+
   .filters-bar{background:#0d1621;border:1px solid #1a2d40;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
   .filter-label{font-size:12px;color:#3a6a9a;font-weight:700;text-transform:uppercase;letter-spacing:1px}
   .filter-group{display:flex;align-items:center;gap:7px}
   .filter-group label{font-size:12px;color:#5a8aaa}
-  .filter-input{background:#080f1a;border:1px solid #1e2d3d;border-radius:6px;color:#c8dff0;padding:4px 8px;font-size:13px;width:90px;font-family:'DM Sans',sans-serif;outline:none}
+  .filter-input,.filter-select{background:#080f1a;border:1px solid #1e2d3d;border-radius:6px;color:#c8dff0;padding:4px 8px;font-size:13px;width:100px;font-family:'DM Sans',sans-serif;outline:none}
   .filter-checkbox{display:flex;align-items:center;gap:6px;font-size:12px;color:#5a8aaa}
   .filter-meta{font-size:12px;color:#2a4a6a;margin-left:auto}
+
   .tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
   .tab{background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;color:#3a6a9a;padding:7px 14px;font-size:13px;transition:all 0.15s}
   .tab.active{background:#1a3a5a;border-color:#2a6aaa;color:#7ac3f0;font-weight:700}
   .tab-count{margin-left:6px;background:#0a1520;border-radius:10px;padding:1px 7px;font-size:11px}
   .tab.active .tab-count{background:#2a5a8a}
-  .card{background:linear-gradient(135deg,#111c2b,#0d1621);border-radius:12px;margin-bottom:11px;overflow:hidden;transition:box-shadow 0.2s;border:1px solid #1a2d40}
-  .card.nouveau{border-color:#00d68f55}
+
+  .card{background:linear-gradient(135deg,#111c2b,#0d1621);border-radius:12px;margin-bottom:11px;overflow:hidden;border-left:3px solid #1e2d3d}
+  .card.nouveau{box-shadow:0 0 0 1px #00d68f33}
   .card-header{padding:13px 17px;cursor:pointer;display:flex;align-items:flex-start;gap:12px}
   .card-header:hover{background:rgba(255,255,255,0.02)}
   .card-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px}
@@ -56,8 +67,22 @@
   .card-price{text-align:right;flex-shrink:0}
   .card-price .main-price{font-size:18px;font-weight:800;color:#e0eaf5;font-variant-numeric:tabular-nums}
   .card-price .price-m2{font-size:12px;color:#3a5a7a}
+  .stats-row{display:flex;gap:7px;padding:0 17px 13px;flex-wrap:wrap}
+  .stat-pill{background:#16202e;border:1px solid #1e2d3d;border-radius:8px;padding:6px 11px;display:flex;flex-direction:column;align-items:center;min-width:82px}
+  .stat-pill.good{background:#1a2e1a;border-color:#00d68f33}
+  .stat-pill.bad{background:#2a1616;border-color:#ff6b6b33}
+  .stat-pill-label{font-size:10px;color:#5a7a9a;letter-spacing:0.5px;text-transform:uppercase}
+  .stat-pill-val{font-size:14px;font-weight:800;color:#e0eaf5;margin-top:2px}
+  .stat-pill.good .stat-pill-val{color:#00d68f}
+  .stat-pill.bad .stat-pill-val{color:#ff6b6b}
   .card-detail{border-top:1px solid #1a2d40;padding:15px 17px}
   .desc-text{font-size:13px;color:#5a8aaa;line-height:1.6;margin-bottom:14px;white-space:pre-line}
+  .detail-note{background:#1a2030;border:1px solid #2a4060;border-radius:8px;padding:9px 13px;margin-bottom:14px;font-size:12px;color:#5a8aaa}
+  .nego-title{margin-bottom:7px;font-size:12px;color:#3a5a7a;text-transform:uppercase;letter-spacing:1px;font-weight:700}
+  .nego-grid{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .nego-card{background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;padding:9px 13px;flex:1;min-width:130px}
+  .nego-label{font-size:12px;color:#4a7a9a;font-weight:700;margin-bottom:5px}
+  .nego-stat{font-size:12px;margin-top:2px}
   .btn-annonce{display:inline-flex;align-items:center;gap:6px;margin-top:2px;background:#1a3a5a;color:#7ac3f0;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;text-decoration:none;border:none;transition:background 0.15s}
   .btn-annonce:hover{background:#1e4a70}
   .empty{text-align:center;padding:60px;color:#2a4a6a}
@@ -83,37 +108,52 @@
 
 <div class="topbar">
   <div>
-    <div class="logo">🏠 ImmoRadar <span>Location</span></div>
+    <div class="logo">🏗️ ImmoRadar <span>Invest</span></div>
     <div class="subtitle" id="refresh-info">Chargement des annonces…</div>
   </div>
   <div class="topbar-right">
     <div class="view-toggle">
-      <button id="btn-view-list" class="active" onclick="setView('list')">📋 Liste</button>
-      <button id="btn-view-map" onclick="setView('map')">🗺️ Carte</button>
+      <button id="btn-view-list" class="active" data-view="list">📋 Liste</button>
+      <button id="btn-view-map" data-view="map">🗺️ Carte</button>
     </div>
-    <input class="search-input" id="search-input" placeholder="Ville, titre…" oninput="renderAll()"/>
-    <button class="btn-refresh" id="btn-refresh" onclick="loadAnnonces()">⟳ Actualiser</button>
+    <input class="search-input" id="search-input" placeholder="Ville, titre…"/>
+    <button class="btn-refresh" id="btn-refresh">⟳ Actualiser</button>
   </div>
 </div>
 
 <div class="main">
 
+  <div class="strategy-tabs" id="strategy-tabs">
+    <button class="strategy-tab active" data-strategy="loc">
+      <div class="strategy-tab-title">🎓☀️ Location saisonnière</div>
+      <div class="strategy-tab-sub">Bail étudiant (8 mois) + Airbnb l'été — studios/T2</div>
+    </button>
+    <button class="strategy-tab" data-strategy="marchand">
+      <div class="strategy-tab-title">🏗️ Marchand de biens</div>
+      <div class="strategy-tab-sub">Achat/division/travaux/revente ou rendement locatif</div>
+    </button>
+  </div>
+
   <div class="filters-bar">
     <span class="filter-label">Filtres</span>
     <div class="filter-group">
-      <label>Loyer max</label>
-      <input class="filter-input" id="prix-max" type="number" step="50" oninput="renderAll()"/>
+      <label>Prix max</label>
+      <input class="filter-input" id="prix-max" type="number" step="10000"/>
     </div>
     <div class="filter-group">
       <label>Surface min</label>
-      <input class="filter-input" id="surface-min" type="number" step="5" oninput="renderAll()"/>
+      <input class="filter-input" id="surface-min" type="number" step="5" value="0"/>
     </div>
     <div class="filter-group">
-      <label>Pièces min</label>
-      <input class="filter-input" id="pieces-min" type="number" step="1" oninput="renderAll()"/>
+      <label>Type</label>
+      <select class="filter-select" id="type-bien">
+        <option value="">Tous</option>
+        <option value="appartement">Appartement</option>
+        <option value="maison">Maison</option>
+      </select>
     </div>
     <div class="filter-checkbox">
-      <input type="checkbox" id="only-new" onchange="renderAll()"/>
+      <input type="checkbox" id="only-new"/>
       <label for="only-new">Nouveautés uniquement</label>
     </div>
     <div class="filter-meta" id="filter-meta"></div>
@@ -132,12 +172,40 @@
 
 <script>
 // ─── ÉTAT GLOBAL ─────────────────────────────────────────────────────────────
-let allAnnonces = [];
-let expandedId  = null;
-let activeTab   = "tous";
-let currentView = "list";
-let meta        = {center:{lat:43.6486,lon:7.1246}, radius_km:10, ville_centre:"Villeneuve-Loubet", surface_min:35, price_max:1300, rooms_min:2, refresh_min:10};
+let allAnnonces   = [];
+let expandedId    = null;
+let activeTab     = "tous";
+let activeStrategy= "loc";
+let currentView   = "list";
+let meta = {
+  center:{lat:43.6486,lon:7.1246}, radius_km:10, ville_centre:"Villeneuve-Loubet",
+  price_max_hard_cap:1500000, notaire_pct:0.075, agence_revente_pct:0.05,
+  lease_etudiant_mois:8, airbnb_mois:4, taux_occupation_airbnb:0.75,
+  credit_taux_annuel:0.037, credit_apport_pct:0.15, credit_duree_ans:20,
+  location_saisonniere_surface_max:55, division_surface_min:90, refresh_min:15,
+  travaux_cost_m2:{bon_etat:150, a_rafraichir:400, a_renover:900, gros_travaux:1500},
+};
 let map, radiusCircle, markersLayer;
+
+// ─── UTILITAIRES ──────────────────────────────────────────────────────────────
+function esc(s){
+  const d = document.createElement("div");
+  d.textContent = s==null?"":String(s);
+  return d.innerHTML;
+}
+function safeHref(u){
+  return /^https?:\/\//i.test(u||"") ? esc(u) : "#";
+}
+function fmt(n){return Math.round(n||0).toLocaleString("fr-FR");}
+function fmtEuro(n){return fmt(n)+" €";}
+function fmtSigned(n){return (n>=0?"+":"")+fmt(n)+" €";}
+function ageStr(date){
+  const m=Math.round((Date.now()-date)/60000);
+  if(m<1) return "à l'instant";
+  if(m<60) return "il y a "+m+"min";
+  if(m<1440) return "il y a "+Math.round(m/60)+"h";
+  return "il y a "+Math.round(m/1440)+"j";
+}
 
 // ─── CHARGEMENT META + API ────────────────────────────────────────────────────
 async function loadMeta(){
@@ -145,13 +213,23 @@ async function loadMeta(){
     const res = await fetch("/api/meta");
     if(res.ok) meta = await res.json();
   }catch(e){ /* garde les valeurs par défaut */ }
-  document.getElementById("prix-max").value    = meta.price_max;
-  document.getElementById("surface-min").value = meta.surface_min;
-  document.getElementById("pieces-min").value  = meta.rooms_min;
+  document.getElementById("prix-max").value = meta.price_max_hard_cap;
+  renderLegend();
+}
+
+function renderLegend(){
   document.getElementById("legend").innerHTML = `
-    <strong>Zone surveillée :</strong> ${meta.radius_km} km autour de ${meta.ville_centre}<br/>
-    <strong>Critères par défaut :</strong> ≥ ${meta.surface_min} m² · pas de studio (≥ ${meta.rooms_min} pièces) · ≤ ${meta.price_max} €/mois<br/>
-    <strong>Sources :</strong> Leboncoin · PAP · SeLoger · Bien'ici — refresh auto toutes les ${meta.refresh_min} min<br/>
+    <strong>Zone surveillée :</strong> ${meta.radius_km} km autour de ${esc(meta.ville_centre)}<br/>
+    <strong>Location saisonnière :</strong> bail étudiant ${meta.lease_etudiant_mois} mois + Airbnb ${meta.airbnb_mois} mois
+      (occupation ${Math.round(meta.taux_occupation_airbnb*100)}%) · profil studio/T2 (≤ ${meta.location_saisonniere_surface_max} m² recommandé)<br/>
+    <strong>Marchand de biens :</strong> valorisation post-travaux au m² du marché local, frais de revente ${Math.round(meta.agence_revente_pct*100)}%,
+      division envisagée seulement si maison de ville/mitoyenne ≥ ${meta.division_surface_min} m² (maisons isolées écartées)<br/>
+    <strong>Frais communs :</strong> notaire ${Math.round(meta.notaire_pct*100)}% · crédit simulé à ${(meta.credit_taux_annuel*100).toFixed(1)}%
+      sur ${meta.credit_duree_ans} ans, apport ${Math.round(meta.credit_apport_pct*100)}%<br/>
+    <strong>Coût travaux estimé (€/m²) :</strong> bon état ${meta.travaux_cost_m2.bon_etat} · à rafraîchir ${meta.travaux_cost_m2.a_rafraichir}
+      · à rénover ${meta.travaux_cost_m2.a_renover} · gros travaux ${meta.travaux_cost_m2.gros_travaux}<br/>
+    <span style="color:#8a6a3a">⚠️ Estimations heuristiques v1 (mots-clés + références de marché approximatives) — seront affinées avec un modèle
+    entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — refresh auto toutes les ${meta.refresh_min} min.</span><br/>
     <span class="new-dot"></span> = annonce détectée pour la première fois il y a moins de 24h
   `;
 }
@@ -166,6 +244,7 @@ function parseAnnonce(raw){
     ville:     raw.ville || "",
     surface:   raw.surface || 0,
     pieces:    raw.pieces || null,
+    typeBien:  raw.type_bien || "",
     lat:       raw.lat,
     lon:       raw.lon,
     distance:  raw.distance_km,
@@ -173,6 +252,8 @@ function parseAnnonce(raw){
     image:     raw.image || "",
     nouveau:   !!raw.nouveau,
     firstSeen: new Date((raw.first_seen||0)*1000),
+    loc:       raw.loc_saisonniere,
+    marchand:  raw.marchand_biens,
   };
 }
 
@@ -186,12 +267,12 @@ async function loadAnnonces(){
     const res = await fetch("/api/annonces", {signal: AbortSignal.timeout(20000)});
     if(!res.ok) throw new Error("HTTP "+res.status);
     const json = await res.json();
-    allAnnonces = (json.annonces||[]).map(parseAnnonce).sort((a,b)=>b.firstSeen-a.firstSeen);
+    allAnnonces = (json.annonces||[]).map(parseAnnonce);
 
     document.getElementById("error-banner").style.display="none";
     document.getElementById("sources-info").style.display="flex";
     const srcHtml = Object.entries(json.sources||{}).map(([name,s])=>
-      s.ok ? `<span>${name}: ${s.retenues}</span>` : `<span style="color:#ff8888">${name}: erreur</span>`
+      s.ok ? `<span>${esc(name)}: ${s.retenues}</span>` : `<span style="color:#ff8888">${esc(name)}: erreur</span>`
     ).join(" · ");
     const age = json.age_min!=null ? `Données de ${json.age_min} min` : "En attente du premier scraping";
     document.getElementById("sources-info").innerHTML = `<span>${allAnnonces.length} annonces</span> · ${age} · ${srcHtml||"aucune source"}`;
@@ -203,7 +284,7 @@ async function loadAnnonces(){
     }
   }catch(e){
     document.getElementById("error-banner").style.display="block";
-    document.getElementById("error-banner").innerHTML = `⚠️ <strong>Erreur de chargement</strong> — ${e.message}`;
+    document.getElementById("error-banner").innerHTML = `⚠️ <strong>Erreur de chargement</strong> — ${esc(e.message)}`;
   }
 
   document.getElementById("refresh-info").textContent =
@@ -213,39 +294,163 @@ async function loadAnnonces(){
   renderAll();
 }
 
-// ─── FILTRES / RENDU ──────────────────────────────────────────────────────────
-function esc(s){
-  const d = document.createElement("div");
-  d.textContent = s==null?"":String(s);
-  return d.innerHTML;
-}
-function safeHref(u){
-  return /^https?:\/\//i.test(u||"") ? esc(u) : "#";
-}
-function fmt(n){return Math.round(n).toLocaleString("fr-FR");}
-function ageStr(date){
-  const m=Math.round((Date.now()-date)/60000);
-  if(m<1) return "à l'instant";
-  if(m<60) return "il y a "+m+"min";
-  if(m<1440) return "il y a "+Math.round(m/60)+"h";
-  return "il y a "+Math.round(m/1440)+"j";
-}
-
+// ─── FILTRES / TRI ────────────────────────────────────────────────────────────
 function getFiltered(){
-  const pMax  = parseInt(document.getElementById("prix-max").value)||999999;
+  const pMax  = parseInt(document.getElementById("prix-max").value)||Infinity;
   const sMin  = parseInt(document.getElementById("surface-min").value)||0;
-  const rMin  = parseInt(document.getElementById("pieces-min").value)||0;
+  const typeF = document.getElementById("type-bien").value;
   const onlyNew = document.getElementById("only-new").checked;
   const q     = document.getElementById("search-input").value.toLowerCase();
-  return allAnnonces.filter(a=>{
+
+  let list = allAnnonces.filter(a=>{
     if(a.prix>pMax) return false;
     if(a.surface>0 && a.surface<sMin) return false;
-    if(a.pieces && a.pieces<rMin) return false;
+    if(typeF && a.typeBien!==typeF) return false;
     if(onlyNew && !a.nouveau) return false;
     if(q && !a.titre.toLowerCase().includes(q) && !a.ville.toLowerCase().includes(q)) return false;
     if(activeTab!=="tous" && a.source!==activeTab) return false;
     return true;
   });
+
+  const ELIG_ORDER = {bonne:0, limitee:1, peu_adaptee:2};
+  if(activeStrategy==="loc"){
+    list.sort((a,b)=>{
+      const eb = ELIG_ORDER[b.loc?.eligibilite] ?? 3, ea = ELIG_ORDER[a.loc?.eligibilite] ?? 3;
+      if(ea!==eb) return ea-eb;
+      return (b.loc?.rendement_brut_pct||0)-(a.loc?.rendement_brut_pct||0);
+    });
+  } else {
+    list.sort((a,b)=>{
+      const pb = b.marchand?.verdict?.priorite ?? 9, pa = a.marchand?.verdict?.priorite ?? 9;
+      if(pa!==pb) return pa-pb;
+      return (b.marchand?.marge_pct||0)-(a.marchand?.marge_pct||0);
+    });
+  }
+  return list;
+}
+
+// ─── RENDU ────────────────────────────────────────────────────────────────────
+function statPill(label,value,tone){
+  return `<div class="stat-pill${tone?" "+tone:""}">
+    <div class="stat-pill-label">${label}</div>
+    <div class="stat-pill-val">${value}</div>
+  </div>`;
+}
+
+function eligibiliteBadge(elig){
+  const map = {
+    bonne:       {label:"✅ Profil adapté", cls:"good"},
+    limitee:     {label:"🟡 Profil limite", cls:""},
+    peu_adaptee: {label:"⚪ Peu adapté", cls:""},
+  };
+  const e = map[elig] || map.peu_adaptee;
+  return `<span class="badge" style="background:#1a3a5a33;color:#7ac3f0;border:1px solid #2a5a8a55">${e.label}</span>`;
+}
+
+function verdictBadge(v){
+  const colors = {1:"#00d68f", 2:"#ffb347", 3:"#4fc3f7", 4:"#888"};
+  const c = colors[v?.priorite] || "#888";
+  return `<span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}55">${esc(v?.label||"")}</span>`;
+}
+
+function renderCardLoc(a){
+  const exp = expandedId===a.id;
+  const l = a.loc;
+  return `
+  <div class="card${a.nouveau?" nouveau":""}" id="card-${esc(a.id)}" data-card-id="${esc(a.id)}" style="border-left-color:${l?.eligibilite==='bonne'?'#00d68f':'#1e2d3d'}">
+    <div class="card-header">
+      <div style="flex:1;min-width:0">
+        <div class="card-meta">
+          ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
+          ${l?eligibiliteBadge(l.eligibilite):""}
+          ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
+          <span class="source-badge">${esc(a.source)}</span>
+          <span class="age-badge">🕐 vu ${ageStr(a.firstSeen)}</span>
+        </div>
+        <div class="card-title">${esc(a.titre)}</div>
+        <div class="card-loc">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""}${a.pieces?" · "+a.pieces+" pièces":""}${l?" · "+esc(l.condition.label):""}</div>
+      </div>
+      <div class="card-price">
+        <div class="main-price">${fmtEuro(a.prix)}</div>
+        ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
+      </div>
+    </div>
+    ${l?`
+    <div class="stats-row">
+      ${statPill("Rendement brut", l.rendement_brut_pct+"%", l.rendement_brut_pct>=7?"good":"")}
+      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad")}
+      ${statPill("Loyer étudiant", fmtEuro(l.loyer_etudiant_mensuel)+"/mois", false)}
+      ${statPill("Airbnb été", fmtEuro(l.airbnb_revenu_mensuel_ete)+"/mois", false)}
+      ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
+    </div>`:""}
+    ${exp?`
+    <div class="card-detail">
+      <p class="desc-text">${esc(a.desc)||"Pas de description disponible."}</p>
+      ${l?`<div class="detail-note">
+        Investissement total (achat + notaire + travaux) : <strong>${fmtEuro(l.investissement_total)}</strong>
+        (apport ${fmtEuro(l.apport)}, mensualité crédit ${fmtEuro(l.mensualite_credit)}).
+        Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>
+        (nuitée Airbnb estimée ${fmtEuro(l.airbnb_nuit_estime)}).
+        État détecté : <strong>${esc(l.condition.label)}</strong> (${esc(l.condition.confiance)}).
+      </div>`:""}
+      <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
+    </div>`:""}
+  </div>`;
+}
+
+function renderCardMarchand(a){
+  const exp = expandedId===a.id;
+  const m = a.marchand;
+  const c = m?.verdict?.priorite===1?"#00d68f":m?.verdict?.priorite===2?"#ffb347":m?.verdict?.priorite===3?"#4fc3f7":"#1e2d3d";
+  return `
+  <div class="card${a.nouveau?" nouveau":""}" id="card-${esc(a.id)}" data-card-id="${esc(a.id)}" style="border-left-color:${c}">
+    <div class="card-header">
+      <div style="flex:1;min-width:0">
+        <div class="card-meta">
+          ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
+          ${m?verdictBadge(m.verdict):""}
+          ${m?.divisibilite?.potentiel===true?'<span class="badge" style="background:#4fc3f722;color:#4fc3f7;border:1px solid #4fc3f755">🔨 Divisible</span>':""}
+          ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
+          <span class="source-badge">${esc(a.source)}</span>
+        </div>
+        <div class="card-title">${esc(a.titre)}</div>
+        <div class="card-loc">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""}${a.typeBien?" · "+esc(a.typeBien):""}${m?" · "+esc(m.condition.label):""}</div>
+      </div>
+      <div class="card-price">
+        <div class="main-price">${fmtEuro(a.prix)}</div>
+        ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
+      </div>
+    </div>
+    ${m?`
+    <div class="stats-row">
+      ${statPill("Marge estimée", fmtSigned(m.marge), m.marge>=0?"good":"bad")}
+      ${statPill("Marge %", m.marge_pct+"%", m.marge_pct>=8?"good":"")}
+      ${statPill("Travaux estimés", fmtEuro(m.cout_travaux), false)}
+      ${statPill("Rend. locatif", m.rendement_locatif_brut_pct+"%", m.rendement_locatif_brut_pct>=6?"good":"")}
+    </div>`:""}
+    ${exp?`
+    <div class="card-detail">
+      <p class="desc-text">${esc(a.desc)||"Pas de description disponible."}</p>
+      ${m?`<div class="detail-note">
+        Valeur estimée après travaux : <strong>${fmtEuro(m.valeur_apres_travaux)}</strong> (frais de revente ${fmtEuro(m.frais_revente)}).
+        Investissement total : <strong>${fmtEuro(m.investissement_total)}</strong> (notaire ${fmtEuro(m.frais_notaire)} + travaux ${fmtEuro(m.cout_travaux)}).
+        État détecté : <strong>${esc(m.condition.label)}</strong> (${esc(m.condition.confiance)}).<br/>
+        Alternative rendement locatif classique : loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois,
+        cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois.<br/>
+        Division : ${esc(m.divisibilite.note)}
+      </div>` : ""}
+      ${m?`
+      <div class="nego-title">Marge selon négociation du prix</div>
+      <div class="nego-grid">
+        ${m.scenarios_negociation.map(s=>`
+          <div class="nego-card">
+            <div class="nego-label">- ${s.remise_pct}% → ${fmtEuro(s.prix)}</div>
+            <div class="nego-stat" style="color:${s.marge>=0?'#00d68f':'#ff6b6b'}">Marge ${fmtSigned(s.marge)} (${s.marge_pct}%)</div>
+          </div>`).join("")}
+      </div>`:""}
+      <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
+    </div>`:""}
+  </div>`;
 }
 
 function renderTabs(){
@@ -258,34 +463,6 @@ function renderTabs(){
     </button>`).join("");
 }
 
-function renderCard(a){
-  const exp = expandedId===a.id;
-  return `
-  <div class="card${a.nouveau?" nouveau":""}" id="card-${esc(a.id)}" data-card-id="${esc(a.id)}">
-    <div class="card-header">
-      <div style="flex:1;min-width:0">
-        <div class="card-meta">
-          ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
-          ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
-          <span class="source-badge">${esc(a.source)}</span>
-          <span class="age-badge">🕐 vu ${ageStr(a.firstSeen)}</span>
-        </div>
-        <div class="card-title">${esc(a.titre)}</div>
-        <div class="card-loc">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""}${a.pieces?" · "+a.pieces+" pièces":""}</div>
-      </div>
-      <div class="card-price">
-        <div class="main-price">${fmt(a.prix)} €<span style="font-size:11px;color:#3a5a7a">/mois</span></div>
-        ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
-      </div>
-    </div>
-    ${exp?`
-    <div class="card-detail">
-      <p class="desc-text">${esc(a.desc)||"Pas de description disponible."}</p>
-      <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
-    </div>`:""}
-  </div>`;
-}
-
 function renderAll(){
   renderTabs();
   const filtered = getFiltered();
@@ -296,6 +473,7 @@ function renderAll(){
   } else if(filtered.length===0){
     list.innerHTML=`<div class="empty"><div class="empty-icon">🔍</div>Aucune annonce ne correspond aux critères.</div>`;
   } else if(currentView==="list"){
+    const renderCard = activeStrategy==="loc" ? renderCardLoc : renderCardMarchand;
     list.innerHTML = filtered.map(renderCard).join("");
   } else {
     list.innerHTML = "";
@@ -312,28 +490,44 @@ function toggleCard(id){
   }
 }
 
-function setTab(key){
-  activeTab=key;
+// ─── ÉVÉNEMENTS ───────────────────────────────────────────────────────────────
+document.getElementById("strategy-tabs").addEventListener("click", e=>{
+  const btn = e.target.closest(".strategy-tab");
+  if(!btn) return;
+  activeStrategy = btn.dataset.strategy;
+  document.querySelectorAll(".strategy-tab").forEach(b=>b.classList.toggle("active", b===btn));
+  expandedId = null;
   renderAll();
-}
+});
 
 document.getElementById("tabs").addEventListener("click", e=>{
   const btn = e.target.closest(".tab");
-  if(btn) setTab(btn.dataset.tabKey);
+  if(btn){ activeTab = btn.dataset.tabKey; renderAll(); }
 });
+
 document.getElementById("annonces-list").addEventListener("click", e=>{
   const card = e.target.closest(".card");
   if(card && !e.target.closest(".btn-annonce")) toggleCard(card.dataset.cardId);
 });
 
-function setView(view){
-  currentView = view;
-  document.getElementById("btn-view-list").classList.toggle("active", view==="list");
-  document.getElementById("btn-view-map").classList.toggle("active", view==="map");
-  document.getElementById("map").style.display = view==="map" ? "block" : "none";
-  document.getElementById("annonces-list").style.display = view==="list" ? "block" : "none";
-  if(view==="map") setTimeout(()=>{ initMap(); map.invalidateSize(); renderAll(); }, 0);
-}
+["prix-max","surface-min","only-new","type-bien"].forEach(id=>{
+  document.getElementById(id).addEventListener("input", renderAll);
+  document.getElementById(id).addEventListener("change", renderAll);
+});
+document.getElementById("search-input").addEventListener("input", renderAll);
+document.getElementById("btn-refresh").addEventListener("click", loadAnnonces);
+
+document.querySelectorAll(".view-toggle button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    const view = btn.dataset.view;
+    currentView = view;
+    document.querySelectorAll(".view-toggle button").forEach(b=>b.classList.toggle("active", b===btn));
+    document.getElementById("map").style.display = view==="map" ? "block" : "none";
+    document.getElementById("annonces-list").style.display = view==="list" ? "block" : "none";
+    if(view==="map") setTimeout(()=>{ initMap(); map.invalidateSize(); renderAll(); }, 0);
+    else renderAll();
+  });
+});
 
 // ─── CARTE ─────────────────────────────────────────────────────────────────
 function initMap(){
@@ -348,7 +542,7 @@ function initMap(){
   }).addTo(map);
   L.marker([meta.center.lat, meta.center.lon], {
     icon: L.divIcon({className:'', html:'<div style="background:#00d68f;width:12px;height:12px;border-radius:50%;border:2px solid #fff"></div>', iconSize:[12,12]})
-  }).addTo(map).bindPopup(meta.ville_centre);
+  }).addTo(map).bindPopup(esc(meta.ville_centre));
   markersLayer = L.layerGroup().addTo(map);
 }
 
@@ -357,14 +551,19 @@ function renderMap(filtered){
   markersLayer.clearLayers();
   const withGeo = filtered.filter(a=>a.lat!=null && a.lon!=null);
   withGeo.forEach(a=>{
-    const color = a.nouveau ? '#00d68f' : '#7ac3f0';
-    const marker = L.circleMarker([a.lat, a.lon], {
-      radius:8, color, weight:2, fillColor:color, fillOpacity:0.5,
-    });
+    let color = '#7ac3f0';
+    if(activeStrategy==="loc") color = a.loc?.eligibilite==="bonne" ? '#00d68f' : (a.loc?.eligibilite==="limitee" ? '#ffb347' : '#3a5a7a');
+    else color = {1:'#00d68f',2:'#ffb347',3:'#4fc3f7'}[a.marchand?.verdict?.priorite] || '#3a5a7a';
+
+    const marker = L.circleMarker([a.lat, a.lon], { radius:8, color, weight:2, fillColor:color, fillOpacity:0.5 });
+    const metric = activeStrategy==="loc"
+      ? `${a.loc?.rendement_brut_pct ?? '?'}% rendement brut`
+      : `${a.marchand?.marge_pct ?? '?'}% marge (${fmtSigned(a.marchand?.marge||0)})`;
     marker.bindPopup(`
-      <div class="popup-price">${fmt(a.prix)} €/mois</div>
+      <div class="popup-price">${fmtEuro(a.prix)}</div>
       <div class="popup-title">${esc(a.titre)}</div>
-      <div style="font-size:12px;color:#5a8aaa;margin-bottom:6px">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""} · ${esc(a.source)}</div>
+      <div style="font-size:12px;color:#5a8aaa;margin-bottom:4px">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""} · ${esc(a.source)}</div>
+      <div style="font-size:12px;color:#7ac3f0;margin-bottom:6px">${metric}</div>
       <a class="popup-link" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
     `);
     marker.addTo(markersLayer);

@@ -8,6 +8,7 @@ import config
 import storage
 from scrapers import leboncoin, bienici, pap, seloger
 from scrapers.common import passes_filters
+from strategies import location_saisonniere, marchand_de_biens
 
 app = Flask(__name__)
 
@@ -63,6 +64,22 @@ _t.start()
 print("[module] Thread lancé.")
 
 
+def enrich(ad):
+    """Ajoute les scores des deux stratégies à une annonce brute."""
+    ad = dict(ad)
+    try:
+        ad["loc_saisonniere"] = location_saisonniere.evaluate(ad)
+    except Exception as e:
+        ad["loc_saisonniere"] = None
+        print(f"[scoring] location_saisonniere erreur sur {ad.get('id')}: {e}")
+    try:
+        ad["marchand_biens"] = marchand_de_biens.evaluate(ad)
+    except Exception as e:
+        ad["marchand_biens"] = None
+        print(f"[scoring] marchand_de_biens erreur sur {ad.get('id')}: {e}")
+    return ad
+
+
 @app.route("/")
 def index():
     return send_file("index.html")
@@ -74,6 +91,7 @@ def api_annonces():
     ads = storage.get_all_ads()
     for a in ads:
         a["nouveau"] = (now - a["first_seen"]) < config.NEW_WINDOW_H * 3600
+    ads = [enrich(a) for a in ads]
     age_min = round((now - _status["ts"]) / 60, 1) if _status["ts"] else None
     return jsonify({
         "ok":       True,
@@ -87,13 +105,23 @@ def api_annonces():
 @app.route("/api/meta")
 def api_meta():
     return jsonify({
-        "center":       {"lat": config.CENTER_LAT, "lon": config.CENTER_LON},
-        "radius_km":    config.RADIUS_KM,
-        "ville_centre": config.VILLE_CENTRE,
-        "surface_min":  config.SURFACE_MIN,
-        "price_max":    config.PRICE_MAX,
-        "rooms_min":    config.ROOMS_MIN,
-        "refresh_min":  config.CACHE_TTL // 60,
+        "center":                 {"lat": config.CENTER_LAT, "lon": config.CENTER_LON},
+        "radius_km":              config.RADIUS_KM,
+        "ville_centre":           config.VILLE_CENTRE,
+        "price_min":              config.PRICE_MIN,
+        "price_max_hard_cap":     config.PRICE_MAX_HARD_CAP,
+        "notaire_pct":            config.NOTAIRE_PCT,
+        "agence_revente_pct":     config.AGENCE_REVENTE_PCT,
+        "lease_etudiant_mois":    config.LEASE_ETUDIANT_MOIS,
+        "airbnb_mois":            config.AIRBNB_MOIS,
+        "taux_occupation_airbnb": config.TAUX_OCCUPATION_AIRBNB,
+        "credit_taux_annuel":     config.CREDIT_TAUX_ANNUEL,
+        "credit_apport_pct":      config.CREDIT_APPORT_PCT,
+        "credit_duree_ans":       config.CREDIT_DUREE_ANS,
+        "location_saisonniere_surface_max": config.LOCATION_SAISONNIERE_SURFACE_MAX,
+        "division_surface_min":   config.DIVISION_SURFACE_MIN,
+        "travaux_cost_m2":        config.TRAVAUX_COST_M2,
+        "refresh_min":            config.CACHE_TTL // 60,
     })
 
 
