@@ -1,5 +1,7 @@
 import math
+
 from config import CENTER_LAT, CENTER_LON, RADIUS_KM, PRICE_MIN, PRICE_MAX_HARD_CAP
+from zones import match_commune
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -20,13 +22,27 @@ def distance_from_center(lat, lon):
         return None
 
 
-def passes_filters(ad):
-    """Filtre une annonce de vente normalisée : dans la zone, prix et
-    surface exploitables. Pas de filtre sur le type de bien ou la surface
-    minimale ici — les deux stratégies (location saisonnière / marchand de
-    biens) évaluent chaque bien et se chargent elles-mêmes de la pertinence
-    (studio/T2 vs maison de ville, etc.)."""
+def resolve_distance(ad):
+    """Distance au centre de la zone. Précise si l'annonce a ses propres
+    lat/lon (Leboncoin), sinon approximée via le centre de la commune
+    reconnue (PAP/SeLoger/Bien'ici ne renvoient pas de coordonnées) —
+    fiable car la recherche elle-même est déjà restreinte aux communes de
+    la zone (cf. zones.py), cette distance n'est qu'indicative."""
     dist = distance_from_center(ad.get("lat"), ad.get("lon"))
+    if dist is not None:
+        return dist, True
+
+    commune = match_commune(ad.get("ville", ""), ad.get("cp", ""))
+    if commune:
+        return haversine_km(CENTER_LAT, CENTER_LON, commune["lat"], commune["lon"]), False
+
+    return None, False
+
+
+def passes_filters(ad):
+    """Filtre une annonce de vente normalisée : dans la zone (précisément
+    ou via la commune reconnue), prix et surface exploitables."""
+    dist, precise = resolve_distance(ad)
     if dist is None or dist > RADIUS_KM:
         return False
     prix = ad.get("prix") or 0
@@ -36,4 +52,5 @@ def passes_filters(ad):
     if surface <= 0:
         return False
     ad["distance_km"] = round(dist, 1)
+    ad["distance_precise"] = precise
     return True

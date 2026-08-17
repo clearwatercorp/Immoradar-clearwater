@@ -26,7 +26,7 @@ def evaluate(ad):
     ville = ad.get("ville", "")
     type_bien = ad.get("type_bien", "")
 
-    condition = estimate_condition(ad.get("titre", ""), ad.get("desc", ""))
+    condition = estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
     cout_travaux = round(surface * condition["cost_m2"])
     acquisition = cout_acquisition(prix, cout_travaux)
     investissement = acquisition["investissement_total"]

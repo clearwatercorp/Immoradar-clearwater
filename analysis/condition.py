@@ -36,7 +36,19 @@ def _match(text, mots):
     return [m for m in mots if m in text]
 
 
-def estimate_condition(titre="", desc=""):
+# DPE utilisé seulement quand les mots-clés ne tranchent pas : un DPE F/G
+# n'implique pas forcément de gros travaux (ça peut être juste le chauffage),
+# donc on ne l'utilise qu'en signal secondaire, jamais pour écraser un
+# mot-clé explicite trouvé dans le texte.
+DPE_COST_TIER = {
+    "A": "bon_etat", "B": "bon_etat",
+    "C": "a_rafraichir", "D": "a_rafraichir",
+    "E": "a_renover",
+    "F": "gros_travaux", "G": "gros_travaux",
+}
+
+
+def estimate_condition(titre="", desc="", dpe=None):
     text = f"{titre or ''} {desc or ''}".lower()
 
     hits = _match(text, MOTS_GROS_TRAVAUX)
@@ -54,5 +66,10 @@ def estimate_condition(titre="", desc=""):
     hits = _match(text, MOTS_BON_ETAT)
     if hits:
         return {"label": "Bon état", "cost_m2": TRAVAUX_COST_M2["bon_etat"], "confiance": "mots-clés", "signaux": hits[:3]}
+
+    tier = DPE_COST_TIER.get((dpe or "").upper())
+    if tier:
+        label = {"bon_etat": "Bon état", "a_rafraichir": "À rafraîchir", "a_renover": "À rénover", "gros_travaux": "Gros travaux"}[tier]
+        return {"label": f"{label} (DPE {dpe.upper()})", "cost_m2": TRAVAUX_COST_M2[tier], "confiance": "DPE (pas de mot-clé explicite)", "signaux": []}
 
     return {"label": "État inconnu", "cost_m2": TRAVAUX_COST_M2_DEFAUT, "confiance": "estimation par défaut (prudente)", "signaux": []}
