@@ -2,7 +2,6 @@ import time
 import threading
 
 from flask import Flask, jsonify, send_file
-from scrapfly import ScrapflyClient
 
 import config
 import storage
@@ -12,7 +11,6 @@ from strategies import location_saisonniere, marchand_de_biens
 
 app = Flask(__name__)
 
-_client = ScrapflyClient(key=config.SCRAPFLY_KEY) if config.SCRAPFLY_KEY else None
 _lock   = threading.Lock()
 _status = {"ts": 0, "sources": {}}
 
@@ -28,12 +26,12 @@ storage.init_db()
 
 def refresh_cache():
     with _lock:
-        print(f"[refresh] Démarrage... (Scrapfly: {'oui' if _client else 'non'})")
+        print("[refresh] Démarrage...")
         all_ads = []
         sources_status = {}
         for name, fn in SCRAPERS.items():
             try:
-                ads = fn(_client)
+                ads = fn()
                 kept = [a for a in ads if a and passes_filters(a)]
                 sources_status[name] = {"ok": True, "trouvees": len(ads), "retenues": len(kept)}
                 all_ads.extend(kept)
@@ -128,10 +126,9 @@ def api_meta():
 @app.route("/health")
 def health():
     return jsonify({
-        "status":   "ok",
-        "cached":   len(storage.get_all_ads()),
-        "scrapfly": bool(_client),
-        "sources":  _status["sources"],
+        "status":  "ok",
+        "cached":  len(storage.get_all_ads()),
+        "sources": _status["sources"],
     })
 
 

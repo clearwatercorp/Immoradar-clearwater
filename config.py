@@ -16,7 +16,6 @@ PRICE_MAX_HARD_CAP = int(os.environ.get("PRICE_MAX_HARD_CAP", 1_500_000))
 PORT         = int(os.environ.get("PORT", 3000))
 CACHE_TTL    = int(os.environ.get("CACHE_TTL", 15 * 60))
 NEW_WINDOW_H = int(os.environ.get("NEW_WINDOW_H", 24))
-SCRAPFLY_KEY = os.environ.get("SCRAPFLY_KEY", "")
 DB_PATH      = os.environ.get("DB_PATH", "annonces.db")
 
 # ─── Frais d'acquisition / revente ────────────────────────────────────────

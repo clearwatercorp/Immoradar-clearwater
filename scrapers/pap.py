@@ -1,13 +1,10 @@
-"""Scraper PAP.fr — entièrement réécrit d'après le module woob
-(modules/pap), qui révèle que :
-  - PAP n'a PAS de balisage JSON-LD sur ses pages de résultats (mon
-    hypothèse initiale était fausse) : c'est du HTML server-rendu classique
-    à parser via sélecteurs CSS (#pages-list .search-list-item-alt).
-  - La recherche est un POST form-encoded vers /recherche (pas une URL
-    slug SEO), avec des identifiants de commune internes à résoudre via
-    l'autocomplete /json/ac-geo?q=<nom>.
-  - Le site est protégé par Cloudflare (CloudScraperMixin côté woob) —
-    Scrapfly (asp=True) est censé gérer ça nativement.
+"""Scraper PAP.fr — calqué sur le module woob (modules/pap) :
+  - PAP est derrière Cloudflare : woob utilise `CloudScraperMixin`, donc on
+    passe par la lib `cloudscraper` (gratuite) plutôt qu'un service payant.
+  - la recherche est un POST form-encoded vers /recherche, avec des
+    identifiants de commune internes résolus via /json/ac-geo?q=<nom>.
+  - les résultats sont du HTML server-rendu (pas de JSON-LD) : parsing via
+    sélecteurs CSS (#pages-list .search-list-item-alt).
 """
 
 import json
@@ -15,10 +12,10 @@ import re
 from urllib.parse import quote, urlencode
 
 from bs4 import BeautifulSoup
-from scrapfly import ScrapeConfig
 
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
+from .http import get_cloudscraper_session, TIMEOUT
 
 AC_GEO_URL = "https://www.pap.fr/json/ac-geo?q={q}"
 SEARCH_URL = "https://www.pap.fr/recherche"
@@ -26,18 +23,18 @@ SEARCH_URL = "https://www.pap.fr/recherche"
 _geo_ids_cache = {"ids": None}
 
 
-def _resolve_geo_ids(client, force=False):
+def _resolve_geo_ids(force=False):
     if _geo_ids_cache["ids"] is not None and not force:
         return _geo_ids_cache["ids"]
 
+    session = get_cloudscraper_session()
     ids = []
     for commune in COMMUNES:
         try:
-            url = AC_GEO_URL.format(q=quote(commune["nom"]))
-            result = client.scrape(ScrapeConfig(url=url, asp=True, country="fr"))
-            if result.upstream_status_code != 200:
+            r = session.get(AC_GEO_URL.format(q=quote(commune["nom"])), timeout=TIMEOUT)
+            if r.status_code != 200:
                 continue
-            data = json.loads(result.content)
+            data = r.json()
             items = data if isinstance(data, list) else data.get("results", [])
             if items and items[0].get("id"):
                 ids.append(str(items[0]["id"]))
@@ -49,11 +46,8 @@ def _resolve_geo_ids(client, force=False):
     return ids
 
 
-def search(client):
-    if not client:
-        return []
-
-    geo_ids = _resolve_geo_ids(client)
+def search():
+    geo_ids = _resolve_geo_ids()
     if not geo_ids:
         print("[pap] aucune commune résolue via ac-geo — recherche annulée")
         return []
@@ -74,21 +68,18 @@ def search(client):
         "reference_courte": "",
         "typesbien[]": ["maison", "appartement"],
     }
-    body = urlencode(data, doseq=True)
 
     try:
-        result = client.scrape(ScrapeConfig(
-            url=SEARCH_URL,
-            method="POST",
-            data=body,
+        r = get_cloudscraper_session().post(
+            SEARCH_URL,
+            data=urlencode(data, doseq=True),
             headers={"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
-            asp=True,
-            country="fr",
-        ))
-        print(f"[pap] HTTP {result.upstream_status_code}")
-        if result.upstream_status_code != 200:
+            timeout=TIMEOUT,
+        )
+        print(f"[pap] HTTP {r.status_code}")
+        if r.status_code != 200:
             return []
-        return parse_listing_page(result.content)
+        return parse_listing_page(r.text)
     except Exception as e:
         print(f"[pap] erreur: {e}")
         return []
@@ -101,8 +92,7 @@ def parse_listing_page(html):
         print("[pap] #pages-list introuvable — structure de page à vérifier")
         return []
 
-    items = container.select("div.search-list-item-alt")
-    results = [r for it in items if (r := _parse_item(it))]
+    results = [r for it in container.select("div.search-list-item-alt") if (r := _parse_item(it))]
     if not results:
         print("[pap] page trouvée mais aucune annonce extraite — sélecteurs à vérifier")
     return results
@@ -140,8 +130,8 @@ def _parse_item(item):
         elif "m²" in txt or "m2" in txt:
             surface = int(float(val))
 
-    # Le titre inclut le prix et les tags dans le HTML brut (ils sont
-    # imbriqués dans le même lien) : on les retire pour un titre lisible.
+    # Le titre contient le prix et les tags (imbriqués dans le même lien) :
+    # on les retire pour obtenir un titre lisible.
     title = link_tag.get_text(" ", strip=True)
     for extra in ([price_tag.get_text(strip=True)] if price_tag else []) + [t.get_text(strip=True) for t in tags]:
         title = title.replace(extra, "")
@@ -152,12 +142,7 @@ def _parse_item(item):
     ville = desc.split(".")[0].strip() if desc else ""
 
     href_low = href.lower()
-    if "maison" in href_low:
-        type_bien = "maison"
-    elif "appartement" in href_low:
-        type_bien = "appartement"
-    else:
-        type_bien = ""
+    type_bien = "maison" if "maison" in href_low else ("appartement" if "appartement" in href_low else "")
 
     img_tag = item.select_one("img")
     image = ""
