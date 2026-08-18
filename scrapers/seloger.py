@@ -20,6 +20,9 @@ from urllib.parse import quote
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
 from .http import get_session, TIMEOUT
+from . import diag
+
+SOURCE = "SeLoger"
 
 BASE_URL = "https://www.seloger.com"
 AUTOCOMPLETE_URL = "https://autocomplete.svc.groupe-seloger.com/auto/complete/0/Ville/6?text={q}"
@@ -78,19 +81,25 @@ def _build_url(city_ids):
 
 
 def search():
+    diag.clear(SOURCE)
     try:
         r = get_session().get(_build_url(_resolve_city_ids()), timeout=TIMEOUT)
         print(f"[seloger] HTTP {r.status_code}")
         if r.status_code != 200:
             if r.status_code in (403, 429):
                 print("[seloger] bloqué par l'anti-bot (captcha probable) — source ignorée pour ce cycle")
+                diag.set_status(SOURCE, f"HTTP {r.status_code} — bloqué par l'anti-robot (captcha)", bloque=True)
+            else:
+                diag.set_status(SOURCE, f"Recherche HTTP {r.status_code}", bloque=False)
             return []
         if "validate.perfdrive" in r.url or "captcha" in r.text[:2000].lower():
             print("[seloger] page de captcha renvoyée — source ignorée pour ce cycle")
+            diag.set_status(SOURCE, "Page de captcha renvoyée — bloqué par l'anti-robot", bloque=True)
             return []
         return parse_listing_page(r.text)
     except Exception as e:
         print(f"[seloger] erreur: {e}")
+        diag.set_status(SOURCE, f"Erreur de recherche : {type(e).__name__}", bloque=True)
         return []
 
 
@@ -111,12 +120,14 @@ def parse_listing_page(html):
     data = _extract_initial_data(html)
     if not data:
         print('[seloger] window["initialData"] introuvable ou illisible — structure de page à vérifier')
+        diag.set_status(SOURCE, 'Page reçue mais window["initialData"] absent — page anti-robot ou structure changée', bloque=True)
         return []
 
     cards = (data.get("cards") or {}).get("list") or []
     results = [r for c in cards if (r := _parse_card(c))]
     if not results:
         print("[seloger] initialData trouvé mais aucune annonce extraite — structure à vérifier")
+        diag.set_status(SOURCE, f"Données trouvées ({len(cards)} fiches) mais aucune exploitable — structure à mettre à jour")
     return results
 
 

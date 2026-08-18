@@ -314,13 +314,18 @@ async function loadAnnonces(){
 
     document.getElementById("error-banner").style.display="none";
     document.getElementById("sources-info").style.display="flex";
-    const srcHtml = Object.entries(json.sources||{}).map(([name,s])=>
-      s.ok ? `<span>${esc(name)}: ${s.retenues}</span>` : `<span style="color:#ff8888">${esc(name)}: erreur</span>`
-    ).join(" · ");
+    const srcHtml = Object.entries(json.sources||{}).map(([name,s])=>{
+      if(!s.ok) return `<span style="color:#ff6b6b">${esc(name)} : erreur</span>`;
+      if(s.retenues>0) return `<span style="color:#00d68f">${esc(name)} : ${s.retenues}</span>`;
+      const icone = s.bloque ? "⛔" : "⚠️";
+      const couleur = s.bloque ? "#ff8888" : "#ffb347";
+      const raison = s.detail ? ` — ${esc(s.detail)}` : "";
+      return `<span style="color:${couleur}" title="${esc(s.detail||'')}">${icone} ${esc(name)} : 0${raison}</span>`;
+    }).join(" · ");
     const age = json.age_min!=null ? `Données de ${json.age_min} min` : "Aucune recherche effectuée";
     document.getElementById("sources-info").innerHTML =
       (enCours ? `<span class="spinner">⟳</span> <span>Recherche en cours…</span> · ` : "") +
-      `<span>${allAnnonces.length} annonces</span> · ${age} · ${srcHtml||"aucune source"}`;
+      `<span>${allAnnonces.length} annonces</span> · ${age}<br/>${srcHtml||"aucune source"}`;
 
     if(allAnnonces.length===0 && !enCours){
       document.getElementById("error-banner").style.display="block";
@@ -392,13 +397,15 @@ function statPill(label,value,tone){
 }
 
 function eligibiliteBadge(elig){
+  if(elig==="bail_commercial"){
+    return `<span class="badge" style="background:#ff6b6b22;color:#ff8888;border:1px solid #ff6b6b55">⛔ Bail commercial</span>`;
+  }
   const map = {
-    bonne:       {label:"✅ Profil adapté", cls:"good"},
-    limitee:     {label:"🟡 Profil limite", cls:""},
-    peu_adaptee: {label:"⚪ Peu adapté", cls:""},
+    bonne:       "✅ Profil adapté",
+    limitee:     "🟡 Profil limite",
+    peu_adaptee: "⚪ Peu adapté",
   };
-  const e = map[elig] || map.peu_adaptee;
-  return `<span class="badge" style="background:#1a3a5a33;color:#7ac3f0;border:1px solid #2a5a8a55">${e.label}</span>`;
+  return `<span class="badge" style="background:#1a3a5a33;color:#7ac3f0;border:1px solid #2a5a8a55">${map[elig] || map.peu_adaptee}</span>`;
 }
 
 function verdictBadge(v){
@@ -429,7 +436,14 @@ function renderCardLoc(a){
         ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
       </div>
     </div>
-    ${l?`
+    ${l && l.eligibilite==="bail_commercial"?`
+    <div class="stats-row">
+      ${statPill("Rendement brut", l.rendement_brut_pct?l.rendement_brut_pct+"%":"?", "bad")}
+      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad")}
+      ${statPill("Loyer exploitant", l.revenu_mensuel_moyen?fmtEuro(l.revenu_mensuel_moyen)+"/mois":"non précisé", "bad")}
+      ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
+    </div>`
+    : l?`
     <div class="stats-row">
       ${statPill("Rendement brut", l.rendement_brut_pct+"%", l.rendement_brut_pct>=7?"good":"")}
       ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad")}
@@ -440,11 +454,21 @@ function renderCardLoc(a){
     ${exp?`
     <div class="card-detail">
       <p class="desc-text">${esc(a.desc)||"Pas de description disponible."}</p>
+      ${l && l.bail_commercial && l.bail_commercial.sous_bail_commercial?`
+      <div class="detail-note" style="background:#2a1616;border-color:#ff6b6b55;color:#ffb3b3">
+        ⛔ <strong>${esc(l.bail_commercial.note)}</strong><br/>
+        ${l.bail_commercial.loyer_mensuel
+          ? `Loyer versé par l'exploitant : <strong>${fmtEuro(l.bail_commercial.loyer_mensuel)}/mois</strong>
+             (extrait de l'annonce, source : ${esc(l.bail_commercial.periodicite_source)})`
+          : `Aucun loyer trouvé dans la description — <strong>à demander au vendeur</strong> avant toute analyse.`}
+      </div>`:""}
       ${l?`<div class="detail-note">
         Investissement total (achat + notaire + travaux) : <strong>${fmtEuro(l.investissement_total)}</strong>
         (apport ${fmtEuro(l.apport)}, mensualité crédit ${fmtEuro(l.mensualite_credit)}).
-        Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>
-        (nuitée Airbnb estimée ${fmtEuro(l.airbnb_nuit_estime)}).
+        ${l.eligibilite!=="bail_commercial"
+          ? `Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>
+             (nuitée Airbnb estimée ${fmtEuro(l.airbnb_nuit_estime)}).`
+          : `Revenu annuel (loyer de l'exploitant) : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>.`}
         État détecté : <strong>${esc(l.condition.label)}</strong> (${esc(l.condition.confiance)}).
       </div>`:""}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
@@ -463,6 +487,7 @@ function renderCardMarchand(a){
         <div class="card-meta">
           ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
           ${m?verdictBadge(m.verdict):""}
+          ${m?.bail_commercial?.sous_bail_commercial?'<span class="badge" style="background:#ff6b6b22;color:#ff8888;border:1px solid #ff6b6b55">⛔ Bail commercial</span>':""}
           ${m?.divisibilite?.potentiel===true?'<span class="badge" style="background:#4fc3f722;color:#4fc3f7;border:1px solid #4fc3f755">🔨 Divisible</span>':""}
           ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
           <span class="source-badge">${esc(a.source)}</span>
@@ -489,10 +514,16 @@ function renderCardMarchand(a){
         Valeur estimée après travaux : <strong>${fmtEuro(m.valeur_apres_travaux)}</strong> (frais de revente ${fmtEuro(m.frais_revente)}).
         Investissement total : <strong>${fmtEuro(m.investissement_total)}</strong> (notaire ${fmtEuro(m.frais_notaire)} + travaux ${fmtEuro(m.cout_travaux)}).
         État détecté : <strong>${esc(m.condition.label)}</strong> (${esc(m.condition.confiance)}).<br/>
-        Alternative rendement locatif classique : loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois,
-        cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois.<br/>
+        Rendement locatif : loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois
+        <em>(${esc(m.loyer_source||"")})</em>, cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois.<br/>
         Division : ${esc(m.divisibilite.note)}
-      </div>` : ""}
+      </div>
+      ${m.bail_commercial && m.bail_commercial.sous_bail_commercial?`
+      <div class="detail-note" style="background:#2a1616;border-color:#ff6b6b55;color:#ffb3b3">
+        ⛔ <strong>${esc(m.bail_commercial.note)}</strong><br/>
+        À la revente, l'acheteur suivant hérite du bail : le marché est plus étroit et la
+        marge théorique ci-dessus est donc à considérer avec prudence.
+      </div>`:""}` : ""}
       ${m?`
       <div class="nego-title">Marge selon négociation du prix</div>
       <div class="nego-grid">

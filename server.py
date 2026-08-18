@@ -7,6 +7,7 @@ import config
 import storage
 from scrapers import leboncoin, bienici, pap, seloger
 from scrapers.common import passes_filters
+from scrapers import diag
 from strategies import location_saisonniere, marchand_de_biens
 
 app = Flask(__name__)
@@ -42,6 +43,13 @@ def refresh_cache():
                 ads = fn()
                 kept = [a for a in ads if a and passes_filters(a)]
                 sources_status[name] = {"ok": True, "trouvees": len(ads), "retenues": len(kept)}
+                detail = diag.get_status(name)
+                if detail:
+                    sources_status[name].update(detail)
+                elif ads and not kept:
+                    sources_status[name]["detail"] = (
+                        f"{len(ads)} annonces trouvées mais aucune dans la zone / les critères"
+                    )
                 all_ads.extend(kept)
                 print(f"[{name}] {len(ads)} trouvées → {len(kept)} retenues après filtres")
             except Exception as e:

@@ -16,6 +16,9 @@ from bs4 import BeautifulSoup
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
 from .http import get_cloudscraper_session, TIMEOUT
+from . import diag
+
+SOURCE = "PAP"
 
 AC_GEO_URL = "https://www.pap.fr/json/ac-geo?q={q}"
 SEARCH_URL = "https://www.pap.fr/recherche"
@@ -29,10 +32,13 @@ def _resolve_geo_ids(force=False):
 
     session = get_cloudscraper_session()
     ids = []
+    derniere_erreur = {"msg": None, "bloque": False}
     for commune in COMMUNES:
         try:
             r = session.get(AC_GEO_URL.format(q=quote(commune["nom"])), timeout=TIMEOUT)
             if r.status_code != 200:
+                derniere_erreur["msg"] = f"autocomplete HTTP {r.status_code}"
+                derniere_erreur["bloque"] = r.status_code in (403, 429, 503)
                 continue
             data = r.json()
             items = data if isinstance(data, list) else data.get("results", [])
@@ -40,13 +46,20 @@ def _resolve_geo_ids(force=False):
                 ids.append(str(items[0]["id"]))
         except Exception as e:
             print(f"[pap] erreur résolution commune {commune['nom']}: {e}")
+            derniere_erreur["msg"] = f"connexion impossible ({type(e).__name__})"
+            derniere_erreur["bloque"] = True
 
     if ids:
         _geo_ids_cache["ids"] = ids
+    elif derniere_erreur["msg"]:
+        diag.set_status(SOURCE, f"Communes non résolues : {derniere_erreur['msg']}", bloque=derniere_erreur["bloque"])
+    else:
+        diag.set_status(SOURCE, "Communes non résolues — l'autocomplete /json/ac-geo ne renvoie plus le format attendu")
     return ids
 
 
 def search():
+    diag.clear(SOURCE)
     geo_ids = _resolve_geo_ids()
     if not geo_ids:
         print("[pap] aucune commune résolue via ac-geo — recherche annulée")
@@ -78,10 +91,12 @@ def search():
         )
         print(f"[pap] HTTP {r.status_code}")
         if r.status_code != 200:
+            diag.set_status(SOURCE, f"Recherche HTTP {r.status_code} — Cloudflare non franchi", bloque=r.status_code in (403, 429, 503))
             return []
         return parse_listing_page(r.text)
     except Exception as e:
         print(f"[pap] erreur: {e}")
+        diag.set_status(SOURCE, f"Erreur de recherche : {type(e).__name__}", bloque=True)
         return []
 
 
@@ -90,11 +105,13 @@ def parse_listing_page(html):
     container = soup.find("div", id="pages-list")
     if not container:
         print("[pap] #pages-list introuvable — structure de page à vérifier")
+        diag.set_status(SOURCE, "Page reçue mais conteneur #pages-list absent — structure du site changée, ou page anti-robot")
         return []
 
     results = [r for it in container.select("div.search-list-item-alt") if (r := _parse_item(it))]
     if not results:
         print("[pap] page trouvée mais aucune annonce extraite — sélecteurs à vérifier")
+        diag.set_status(SOURCE, "Conteneur trouvé mais aucune annonce extraite — sélecteurs CSS à mettre à jour")
     return results
 
 

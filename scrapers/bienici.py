@@ -12,6 +12,9 @@ from urllib.parse import quote
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
 from .http import get_session, TIMEOUT
+from . import diag
+
+SOURCE = "Bien'ici"
 
 SUGGEST_URL = "https://res.bienici.com/suggest.json?q={q}"
 SEARCH_URL = "https://www.bienici.com/realEstateAds.json?filters="
@@ -47,9 +50,11 @@ def _resolve_zone_ids(force=False):
 
 
 def search():
+    diag.clear(SOURCE)
     zone_ids = _resolve_zone_ids()
     if not zone_ids:
         print("[bienici] aucune zone résolue — recherche annulée")
+        diag.set_status(SOURCE, "Zones non résolues via suggest.json", bloque=True)
         return []
 
     filters = {
@@ -76,10 +81,12 @@ def search():
         )
         print(f"[bienici] HTTP {r.status_code}")
         if r.status_code != 200:
+            diag.set_status(SOURCE, f"Recherche HTTP {r.status_code}", bloque=r.status_code in (403, 429))
             return []
         ads = r.json().get("realEstateAds") or []
     except Exception as e:
         print(f"[bienici] erreur: {e}")
+        diag.set_status(SOURCE, f"Erreur de recherche : {type(e).__name__}", bloque=True)
         return []
 
     return [parsed for a in ads if (parsed := parse_ad(a))]

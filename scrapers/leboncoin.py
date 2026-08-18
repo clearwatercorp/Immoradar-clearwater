@@ -16,6 +16,9 @@ from bs4 import BeautifulSoup
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
 from .http import get_session, TIMEOUT
+from . import diag
+
+SOURCE = "Leboncoin"
 
 CATEGORY_VENTE = "9"
 REAL_ESTATE_TYPES = ["1", "2"]  # maison, appartement
@@ -32,19 +35,23 @@ def _fetch_api_key(force=False):
         r = get_session().get(HOME_URL, timeout=TIMEOUT)
         if r.status_code != 200:
             print(f"[leboncoin] page d'accueil HTTP {r.status_code} — clé API non récupérable")
+            diag.set_status(SOURCE, f"Page d'accueil HTTP {r.status_code} — blocage anti-robot probable", bloque=True)
             return None
         tag = BeautifulSoup(r.text, "html.parser").find("script", id="__NEXT_DATA__")
         if not tag or not tag.string:
             print("[leboncoin] __NEXT_DATA__ introuvable sur la page d'accueil")
+            diag.set_status(SOURCE, "Page d'accueil reçue mais __NEXT_DATA__ absent — page anti-robot ou structure changée", bloque=True)
             return None
         key = json.loads(tag.string).get("runtimeConfig", {}).get("API", {}).get("KEY")
         if key:
             _api_key_cache["key"] = key
         else:
             print("[leboncoin] clé API absente du __NEXT_DATA__")
+            diag.set_status(SOURCE, "Clé d'API absente du __NEXT_DATA__ — structure du site changée")
         return key
     except Exception as e:
         print(f"[leboncoin] erreur récupération clé API: {e}")
+        diag.set_status(SOURCE, f"Connexion impossible : {type(e).__name__}", bloque=True)
         return None
 
 
@@ -85,6 +92,7 @@ def _post_search(api_key):
 
 
 def search():
+    diag.clear(SOURCE)
     api_key = _fetch_api_key()
     if not api_key:
         return []
@@ -99,10 +107,14 @@ def search():
 
         print(f"[leboncoin] HTTP {r.status_code}")
         if r.status_code != 200:
+            diag.set_status(SOURCE, f"API de recherche HTTP {r.status_code}", bloque=r.status_code in (401, 403, 429))
             return []
         ads = r.json().get("ads", [])
+        if not ads:
+            diag.set_status(SOURCE, "API OK mais aucune annonce renvoyée — filtres de recherche à vérifier")
     except Exception as e:
         print(f"[leboncoin] erreur: {e}")
+        diag.set_status(SOURCE, f"Erreur de recherche : {type(e).__name__}", bloque=True)
         return []
 
     return [parsed for a in ads if (parsed := parse_ad(a))]

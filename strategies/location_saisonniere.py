@@ -9,6 +9,7 @@ from config import (
 )
 from references import get_reference, loyer_mensuel_estime, airbnb_nuit_estimee
 from analysis.condition import estimate_condition
+from analysis.bail_commercial import detect as detect_bail_commercial
 from strategies.common import cout_acquisition
 
 MULTIPLICATEUR_LOYER_ETUDIANT = 1.08  # meublé bail court vs. nu classique
@@ -23,6 +24,37 @@ def evaluate(ad):
     condition = estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
     cout_travaux = round(surface * condition["cost_m2"])
     acquisition = cout_acquisition(prix, cout_travaux)
+    investissement = acquisition["investissement_total"]
+
+    bail = detect_bail_commercial(ad.get("titre", ""), ad.get("desc", ""), prix)
+
+    # Bien sous bail commercial (résidence de tourisme/étudiante/services) :
+    # l'exploitant détient le bail, la stratégie bail étudiant + Airbnb est
+    # inapplicable. Seul le loyer annoncé dans l'annonce fait foi.
+    if bail["sous_bail_commercial"]:
+        loyer_reel = bail.get("loyer_mensuel")
+        revenu_annuel = (loyer_reel or 0) * 12
+        revenu_mensuel_moyen = loyer_reel or 0
+        rendement_brut = (
+            round(revenu_annuel / investissement * 100, 1) if investissement > 0 and loyer_reel else 0
+        )
+        return {
+            "eligibilite": "bail_commercial",
+            "bail_commercial": bail,
+            "condition": condition,
+            "cout_travaux": cout_travaux,
+            "frais_notaire": acquisition["frais_notaire"],
+            "investissement_total": investissement,
+            "apport": acquisition["apport"],
+            "mensualite_credit": acquisition["mensualite_credit"],
+            "loyer_etudiant_mensuel": None,
+            "airbnb_nuit_estime": None,
+            "airbnb_revenu_mensuel_ete": None,
+            "revenu_annuel_estime": revenu_annuel,
+            "revenu_mensuel_moyen": revenu_mensuel_moyen,
+            "rendement_brut_pct": rendement_brut,
+            "cashflow_mensuel_moyen": revenu_mensuel_moyen - acquisition["mensualite_credit"],
+        }
 
     ref = get_reference(ville)
     loyer_etudiant_mensuel = round(loyer_mensuel_estime(surface, ref) * MULTIPLICATEUR_LOYER_ETUDIANT)
@@ -32,7 +64,6 @@ def evaluate(ad):
     revenu_annuel = loyer_etudiant_mensuel * LEASE_ETUDIANT_MOIS + revenu_airbnb_mensuel * AIRBNB_MOIS
     revenu_mensuel_moyen = round(revenu_annuel / 12)
 
-    investissement = acquisition["investissement_total"]
     rendement_brut = round(revenu_annuel / investissement * 100, 1) if investissement > 0 else 0
     cashflow_mensuel = revenu_mensuel_moyen - acquisition["mensualite_credit"]
 
@@ -45,6 +76,7 @@ def evaluate(ad):
 
     return {
         "eligibilite": eligibilite,
+        "bail_commercial": bail,
         "condition": condition,
         "cout_travaux": cout_travaux,
         "frais_notaire": acquisition["frais_notaire"],

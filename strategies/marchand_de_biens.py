@@ -7,6 +7,7 @@ from config import AGENCE_REVENTE_PCT
 from references import get_reference, loyer_mensuel_estime
 from analysis.condition import estimate_condition
 from analysis.divisibilite import estimate_divisibilite
+from analysis.bail_commercial import detect as detect_bail_commercial
 from strategies.common import cout_acquisition
 
 NEGOCIATIONS = [0.05, 0.10, 0.15]
@@ -43,14 +44,29 @@ def evaluate(ad):
 
     divisibilite = estimate_divisibilite(ad.get("titre", ""), ad.get("desc", ""), type_bien, surface)
 
-    loyer_classique_mensuel = round(loyer_mensuel_estime(surface, ref))
+    # Sous bail commercial, le loyer de marché n'a aucun sens : c'est
+    # l'exploitant qui paie, au montant fixé par le bail. On utilise donc le
+    # loyer annoncé dans la description quand il a pu être extrait.
+    bail = detect_bail_commercial(ad.get("titre", ""), ad.get("desc", ""), prix)
+    if bail["sous_bail_commercial"]:
+        loyer_classique_mensuel = bail.get("loyer_mensuel") or 0
+        loyer_source = "loyer annoncé dans l'annonce (bail commercial)" if loyer_classique_mensuel \
+            else "loyer non mentionné dans l'annonce — à demander"
+    else:
+        loyer_classique_mensuel = round(loyer_mensuel_estime(surface, ref))
+        loyer_source = "estimation marché local"
+
     rendement_locatif_brut = round(loyer_classique_mensuel * 12 / investissement * 100, 1) if investissement > 0 else 0
     mensualite = acquisition["mensualite_credit"]
     cashflow_locatif_mensuel = loyer_classique_mensuel - mensualite
 
     marge_pct = scenario_actuel["marge_pct"]
     marge_apres_nego10 = scenarios_negociation[1]["marge_pct"]
-    if marge_pct >= 15 and rendement_locatif_brut >= 6:
+    if bail["sous_bail_commercial"]:
+        # Revente contrainte : l'acheteur suivant hérite du bail, le marché
+        # est nettement plus étroit. On ne classe jamais ces biens en tête.
+        verdict = {"label": "Bail commercial — à étudier", "priorite": 4}
+    elif marge_pct >= 15 and rendement_locatif_brut >= 6:
         verdict = {"label": "Excellente opportunité", "priorite": 1}
     elif marge_pct >= 8 or rendement_locatif_brut >= 6:
         verdict = {"label": "Bonne opportunité", "priorite": 2}
@@ -71,6 +87,8 @@ def evaluate(ad):
         "marge_pct": marge_pct,
         "scenarios_negociation": scenarios_negociation,
         "divisibilite": divisibilite,
+        "bail_commercial": bail,
+        "loyer_source": loyer_source,
         "loyer_classique_mensuel": loyer_classique_mensuel,
         "rendement_locatif_brut_pct": rendement_locatif_brut,
         "mensualite_credit": mensualite,
