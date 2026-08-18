@@ -21,7 +21,10 @@ la lib suffit si Leboncoin change), avec repli sur une implémentation
 curl_cffi interne si la lib est absente ou échoue.
 """
 
-from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM, VILLE_CENTRE
+from urllib.parse import urlparse
+
+from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM, VILLE_CENTRE, PROXY_URL
+from .http import proxies_dict
 from . import diag
 
 SOURCE = "Leboncoin"
@@ -39,6 +42,23 @@ def search():
 
 
 # ─── Moteur principal : bibliothèque lbc ──────────────────────────────────
+def _lbc_proxy():
+    """Convertit PROXY_URL en objet lbc.Proxy, ou None."""
+    if not PROXY_URL:
+        return None
+    try:
+        import lbc
+        p = urlparse(PROXY_URL)
+        return lbc.Proxy(
+            host=p.hostname, port=p.port or 80,
+            username=p.username, password=p.password,
+            scheme=p.scheme or "http",
+        )
+    except Exception as e:
+        print(f"[leboncoin] PROXY_URL invalide ({e}), ignoré")
+        return None
+
+
 def _search_via_lbc():
     """Retourne la liste d'annonces, ou None si la lib n'est pas utilisable
     (dans ce cas on tente le moteur interne). Une liste vide = la lib a
@@ -51,7 +71,7 @@ def _search_via_lbc():
         return None
 
     try:
-        client = lbc.Client()
+        client = lbc.Client(proxy=_lbc_proxy())
         location = lbc.City(lat=CENTER_LAT, lng=CENTER_LON, radius=int(RADIUS_KM * 1000), city=VILLE_CENTRE)
         result = client.search(
             locations=[location],
@@ -178,6 +198,8 @@ def _nouvelle_session():
         return None
     navigateur = random.choice(["safari_ios", "chrome_android", "safari", "firefox"])
     s = cffi.Session(impersonate=navigateur)
+    if PROXY_URL:
+        s.proxies = proxies_dict()
     s.headers.update({
         "User-Agent": _user_agent_mobile(),
         "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site",

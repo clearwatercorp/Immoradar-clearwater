@@ -18,6 +18,14 @@ CACHE_TTL    = int(os.environ.get("CACHE_TTL", 15 * 60))
 NEW_WINDOW_H = int(os.environ.get("NEW_WINDOW_H", 24))
 DB_PATH      = os.environ.get("DB_PATH", "annonces.db")
 
+# Proxy résidentiel/mobile — indispensable pour Leboncoin, PAP et SeLoger
+# depuis un hébergeur : leurs protections (DataDome, Cloudflare) bloquent les
+# IP de datacenter dès la 1re requête, quelle que soit la finesse du scraping.
+# Sans proxy, seule Bien'ici (non protégée) répond. Format standard :
+#   http://utilisateur:motdepasse@hote:port   (ou socks5://…)
+# Laisser vide pour ne pas utiliser de proxy.
+PROXY_URL = os.environ.get("PROXY_URL", "").strip()
+
 # ─── Frais d'acquisition / revente ────────────────────────────────────────
 NOTAIRE_PCT        = float(os.environ.get("NOTAIRE_PCT", 0.075))   # frais de notaire, ancien
 AGENCE_REVENTE_PCT = float(os.environ.get("AGENCE_REVENTE_PCT", 0.05))  # honoraires agence à la revente

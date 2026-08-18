@@ -18,6 +18,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      # Proxy résidentiel — décommenter pour débloquer Leboncoin/PAP/SeLoger
+      # depuis l'hébergeur (sans lui, seule Bien'ici répond). Voir le README.
+      # - key: PROXY_URL
+      #   value: "http://identifiant:motdepasse@hote:port"
+      #
       # Les critères de recherche sont modifiables ici sans toucher au code
       # (sinon les valeurs par défaut de config.py s'appliquent).
       # - key: PRICE_MAX_HARD_CAP

@@ -12,6 +12,15 @@ d'investissement** :
 
 Sources : Leboncoin · PAP · SeLoger · Bien'ici. Aucune clé d'API n'est nécessaire.
 
+> **⚠️ À lire si vous hébergez l'outil en ligne.** Leboncoin (DataDome), PAP et
+> SeLoger (Cloudflare) bloquent les adresses IP de **datacenter** dès la première
+> requête — c'est le cas de tous les hébergeurs (Render, etc.), indépendamment de
+> la qualité du scraping. Depuis un hébergeur, **seule Bien'ici répond** sans
+> configuration. Pour débloquer les trois autres, il faut un **proxy résidentiel**
+> (voir [la section dédiée](#débloquer-leboncoin-pap-seloger--proxy-résidentiel)).
+> En local (option B), depuis votre connexion personnelle, les quatre sources
+> fonctionnent sans proxy.
+
 ---
 
 ## Option A — En ligne, sans rien installer (accès PC + téléphone)
@@ -36,11 +45,42 @@ voulez consulter depuis votre téléphone. Tout se fait au navigateur.
 | IP de datacenter | Les sites immobiliers bloquent plus volontiers qu'une connexion perso — certaines sources peuvent renvoyer 0 annonce |
 
 Le plan payant « starter » (~7 $/mois) + un disque persistant supprime les deux
-premières limites. Pour la troisième, voir la remarque sur les sources plus bas.
+premières limites. La troisième (IP de datacenter) se règle avec un proxy
+résidentiel — voir ci-dessous.
 
 > L'URL Render est publique (non indexée mais accessible à qui la connaît). Les
 > données affichées sont des annonces immobilières publiques ; demandez-moi si
 > vous souhaitez malgré tout protéger l'accès par un mot de passe.
+
+---
+
+## Débloquer Leboncoin, PAP, SeLoger : proxy résidentiel
+
+En hébergement, ces trois sources refusent l'IP de datacenter. La parade standard
+(et, en 2026, la seule fiable) est de faire sortir les requêtes par un **proxy
+résidentiel** : une IP de particulier, que les protections laissent passer.
+
+1. Créer un compte chez un fournisseur de proxys résidentiels. Plusieurs proposent
+   un **essai gratuit** ou une petite offre à quelques euros, ce qui suffit
+   largement pour un usage « quelques jours » (Decodo/Smartproxy, IPRoyal,
+   Webshare — offre *residential*, pas *datacenter*).
+2. Récupérer l'URL du proxy au format :
+   `http://identifiant:motdepasse@hote:port`
+3. Dans Render : **Dashboard → votre service → Environment → Add Environment
+   Variable**, clé `PROXY_URL`, valeur = l'URL ci-dessus. Enregistrer (le service
+   redémarre seul).
+4. Relancer une recherche : les quatre sources doivent répondre.
+
+Aucune autre modification n'est nécessaire — le proxy est appliqué automatiquement
+à toutes les sources. Laisser `PROXY_URL` vide revient au comportement sans proxy
+(seule Bien'ici répond en hébergement).
+
+> **Pourquoi c'est nécessaire.** Les protections anti-robot (DataDome pour
+> Leboncoin, Cloudflare pour PAP/SeLoger) classent les plages d'adresses de
+> datacenter comme « robot » avant même de lire la requête. Aucune technique de
+> scraping ne contourne ça ; seul le passage par une IP résidentielle le fait.
+> C'est pour cette raison qu'**en local, sans proxy, tout fonctionne** : votre
+> connexion personnelle est déjà une IP résidentielle.
 
 ---
 

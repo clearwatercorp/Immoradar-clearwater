@@ -8,6 +8,8 @@ ce que fait le module woob (CloudScraperMixin sur PAP uniquement).
 
 import requests
 
+from config import PROXY_URL
+
 BROWSER_HEADERS = {
     "user-agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -25,12 +27,23 @@ TIMEOUT = 25
 _sessions = {}
 
 
+def proxies_dict():
+    """Dict proxies (format requests/curl_cffi) ou None si aucun proxy."""
+    return {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
+
+
+def proxy_actif():
+    return bool(PROXY_URL)
+
+
 def get_session():
     """Session requests classique, réutilisée entre les appels (garde les
     cookies, ce qui aide sur les sites qui posent un cookie de session)."""
     if "plain" not in _sessions:
         s = requests.Session()
         s.headers.update(BROWSER_HEADERS)
+        if PROXY_URL:
+            s.proxies = proxies_dict()
         _sessions["plain"] = s
     return _sessions["plain"]
 
@@ -48,6 +61,8 @@ def get_impersonate_session():
             from curl_cffi import requests as cffi_requests
             s = cffi_requests.Session(impersonate="chrome")
             s.headers.update({"accept-language": BROWSER_HEADERS["accept-language"]})
+            if PROXY_URL:
+                s.proxies = proxies_dict()
             _sessions["impersonate"] = s
         except Exception as e:
             print(f"[http] curl_cffi indisponible ({e}), repli sur requests")
@@ -71,6 +86,8 @@ def get_cloudscraper_session():
             import cloudscraper
             s = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows", "mobile": False})
             s.headers.update({"accept-language": BROWSER_HEADERS["accept-language"]})
+            if PROXY_URL:
+                s.proxies = proxies_dict()
         except Exception as e:
             print(f"[http] cloudscraper indisponible ({e}), repli sur requests")
             s = get_session()
