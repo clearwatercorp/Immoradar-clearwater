@@ -1,181 +1,223 @@
-"""Scraper Leboncoin — source prioritaire (de loin le plus gros volume
-d'annonces, et le seul où les particuliers publient massivement).
+"""Scraper Leboncoin — source prioritaire (de loin le plus gros volume).
 
-Structure calquée sur le module woob (modules/leboncoin) :
-  - catégorie "9" = Ventes immobilières, real_estate_type "1"=maison/"2"=appartement
-  - la clé d'API est extraite du JSON __NEXT_DATA__ de la page d'accueil
-    (runtimeConfig.API.KEY), elle n'est pas constante.
-  - le filtre géographique passe par filters.location.city_zipcodes.
-  - attributes["real_estate_type"] est déjà un libellé texte.
+Leboncoin est protégé par DataDome, qui filtre surtout sur l'empreinte TLS
+et sur le fait de se présenter comme un navigateur web. La technique qui
+passe gratuitement, documentée par la communauté et implémentée par la
+bibliothèque open-source `lbc` (MIT, github.com/etienne-hd/lbc), est de se
+faire passer non pas pour un navigateur mais pour l'**application mobile**
+Leboncoin :
 
-Leboncoin est protégé par DataDome, qui filtre en grande partie sur
-l'empreinte TLS : une session `requests` est repérée dès la poignée de main,
-avant même la lecture des en-têtes. D'où la cascade ci-dessous, qui essaie
-plusieurs combinaisons et s'arrête à la première qui fonctionne :
+  - requêtes via curl_cffi (empreinte TLS/HTTP2 d'un vrai navigateur mobile) ;
+  - User-Agent applicatif « LBC;iOS;18.x;iPhone;phone;<uuid>;wifi;101.x » ;
+  - initialisation des cookies DataDome par une visite préalable de la home ;
+  - sur 403, on ré-initialise entièrement la session (autre appareil, autres
+    cookies) et on retente — DataDome est probabiliste, un nouvel essai passe
+    souvent.
 
-  session   : empreinte TLS Chrome (curl_cffi) puis requests classique
-  clé d'API : extraite de la page d'accueil, sinon clé publique connue
-              (permet de tenter l'API même quand la page HTML est bloquée,
-              l'API mobile étant souvent moins filtrée que le site web)
-  filtre géo: liste de communes, puis rayon lat/lon
+Cette API mobile (api.leboncoin.fr) est bien moins filtrée que le site web.
 
-La combinaison retenue est rapportée dans le diagnostic, ce qui permet de
-simplifier ensuite en ne gardant que celle qui marche réellement.
+On s'appuie sur `lbc` comme moteur principal (maintenu : une mise à jour de
+la lib suffit si Leboncoin change), avec repli sur une implémentation
+curl_cffi interne si la lib est absente ou échoue.
 """
 
-import json
-
-from bs4 import BeautifulSoup
-
-from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM
-from zones import COMMUNES
-from .http import get_session, get_impersonate_session, impersonate_disponible, TIMEOUT
+from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM, VILLE_CENTRE
 from . import diag
 
 SOURCE = "Leboncoin"
 
-CATEGORY_VENTE = "9"
-REAL_ESTATE_TYPES = ["1", "2"]  # maison, appartement
-HOME_URL = "https://www.leboncoin.fr/annonces/offres"
-API_URL = "https://api.leboncoin.fr/finder/search"
-
-# Clé publique historiquement utilisée par le site. Sert uniquement de repli
-# quand la page d'accueil est inaccessible : si elle est périmée, l'API
-# répondra 401 et la cascade passera à la combinaison suivante.
-CLE_REPLI = "ba0c2dad52b3ec"
-
-_cache = {"cle": None, "origine": None}
-
-
-# ─── Clé d'API ────────────────────────────────────────────────────────────
-def _extraire_cle(html):
-    tag = BeautifulSoup(html, "html.parser").find("script", id="__NEXT_DATA__")
-    if not tag or not tag.string:
-        return None
-    return json.loads(tag.string).get("runtimeConfig", {}).get("API", {}).get("KEY")
-
-
-def _obtenir_cle(session, trace):
-    """Clé fraîche depuis la page d'accueil, sinon clé de repli."""
-    if _cache["cle"]:
-        return _cache["cle"], _cache["origine"]
-    try:
-        r = session.get(HOME_URL, timeout=TIMEOUT)
-        if r.status_code == 200:
-            cle = _extraire_cle(r.text)
-            if cle:
-                _cache.update(cle=cle, origine="page d'accueil")
-                return cle, "page d'accueil"
-            trace.append("page d'accueil 200 mais __NEXT_DATA__ inexploitable")
-        else:
-            trace.append(f"page d'accueil HTTP {r.status_code}")
-    except Exception as e:
-        trace.append(f"page d'accueil injoignable ({type(e).__name__})")
-    return CLE_REPLI, "repli"
-
-
-# ─── Filtres de recherche ─────────────────────────────────────────────────
-def _location_communes():
-    return {
-        "city_zipcodes": [
-            {"city": c["nom"], "zipcode": c["cp"], "label": f"{c['nom']} {c['cp']}"} for c in COMMUNES
-        ]
-    }
-
-
-def _location_rayon():
-    return {"area": {"lat": CENTER_LAT, "lng": CENTER_LON, "radius": int(RADIUS_KM * 1000)}}
-
-
-def _payload(location):
-    return {
-        "limit": 35,
-        "limit_alu": 3,
-        "sort_by": "time",
-        "sort_order": "desc",
-        "offset": 0,
-        "extend": True,
-        "listing_source": "direct-search",
-        "filters": {
-            "category": {"id": CATEGORY_VENTE},
-            "location": location,
-            "enums": {"ad_type": ["offer"], "real_estate_type": REAL_ESTATE_TYPES},
-            "ranges": {"price": {"max": PRICE_MAX_HARD_CAP}},
-        },
-    }
-
-
-def _tenter(session, cle, location):
-    """Un essai de recherche. Retourne (annonces_brutes, note)."""
-    try:
-        r = session.post(
-            API_URL,
-            data=json.dumps(_payload(location)),
-            headers={
-                "api_key": cle,
-                "content-type": "application/json",
-                "accept": "*/*",
-                "origin": "https://www.leboncoin.fr",
-                "referer": "https://www.leboncoin.fr/recherche",
-            },
-            timeout=TIMEOUT,
-        )
-    except Exception as e:
-        return None, f"injoignable ({type(e).__name__})"
-
-    if r.status_code != 200:
-        return None, f"HTTP {r.status_code}"
-    try:
-        ads = r.json().get("ads", [])
-    except Exception:
-        return None, "réponse illisible (non JSON)"
-    if not ads:
-        return None, "HTTP 200 mais 0 annonce"
-    return ads, f"{len(ads)} annonces"
-
-
-def _sessions():
-    sessions = []
-    if impersonate_disponible():
-        sessions.append(("empreinte Chrome", get_impersonate_session()))
-    sessions.append(("requests", get_session()))
-    return sessions
+REAL_ESTATE_TYPES = ("1", "2")  # maison, appartement
 
 
 def search():
     diag.clear(SOURCE)
-    trace = []
+    ads = _search_via_lbc()
+    if ads is not None:
+        return ads
+    # Repli si la lib lbc est absente ou a échoué autrement que par blocage.
+    return _search_interne()
 
-    for nom_session, session in _sessions():
-        cle, origine = _obtenir_cle(session, trace)
 
-        for nom_filtre, location in (("communes", _location_communes()), ("rayon", _location_rayon())):
-            ads, note = _tenter(session, cle, location)
-            etiquette = f"{nom_session}/clé {origine}/{nom_filtre}"
-            print(f"[leboncoin] {etiquette} → {note}")
-            trace.append(f"{etiquette} : {note}")
+# ─── Moteur principal : bibliothèque lbc ──────────────────────────────────
+def _search_via_lbc():
+    """Retourne la liste d'annonces, ou None si la lib n'est pas utilisable
+    (dans ce cas on tente le moteur interne). Une liste vide = la lib a
+    répondu mais sans résultat / bloquée : on ne tente pas le repli, il
+    utiliserait la même technique."""
+    try:
+        import lbc
+    except Exception as e:
+        print(f"[leboncoin] lib lbc indisponible ({e}) — repli interne")
+        return None
 
-            if ads:
-                diag.set_status(SOURCE, f"OK via {etiquette}")
-                return [parsed for a in ads if (parsed := parse_ad(a))]
+    try:
+        client = lbc.Client()
+        location = lbc.City(lat=CENTER_LAT, lng=CENTER_LON, radius=int(RADIUS_KM * 1000), city=VILLE_CENTRE)
+        result = client.search(
+            locations=[location],
+            category=lbc.Category.IMMOBILIER_VENTES_IMMOBILIERES,
+            sort=lbc.Sort.NEWEST,
+            limit=35,
+            real_estate_type=REAL_ESTATE_TYPES,
+            price=(0, PRICE_MAX_HARD_CAP),
+        )
+        ads = [parsed for a in result.ads if (parsed := _parse_lbc_ad(a))]
+        print(f"[leboncoin] lbc → {len(result.ads)} annonces, {len(ads)} exploitables")
+        if not ads:
+            diag.set_status(SOURCE, "API mobile OK mais aucune annonce dans la zone/les critères")
+        return ads
+    except Exception as e:
+        nom = type(e).__name__
+        # DatadomeError = blocage après tous les retries de la lib.
+        if "Datadome" in nom:
+            print("[leboncoin] lbc bloqué par DataDome après retries")
+            diag.set_status(SOURCE, "Bloqué par DataDome (API mobile) malgré plusieurs tentatives", bloque=True)
+            return []
+        print(f"[leboncoin] lbc erreur {nom}: {e} — repli interne")
+        return None
 
-            # Clé refusée : elle est peut-être périmée, on la réinitialise
-            # pour que la session suivante en redemande une fraîche.
-            if note.startswith("HTTP 401") or note.startswith("HTTP 403"):
-                _cache.update(cle=None, origine=None)
-                break
 
-    resume = " | ".join(trace[-4:]) or "aucune tentative aboutie"
-    bloque = any(("HTTP 40" in t) or ("HTTP 429" in t) or ("injoignable" in t) for t in trace)
-    diag.set_status(SOURCE, resume, bloque=bloque)
+def _lbc_attr(ad, key):
+    attr = (ad.attributes or {}).get(key)
+    return attr.value_label if attr else None
+
+
+def _parse_lbc_ad(ad):
+    try:
+        loc = ad.location
+
+        surface = 0
+        try:
+            surface = int(float(_lbc_attr(ad, "square") or 0))
+        except (TypeError, ValueError):
+            pass
+
+        pieces = None
+        try:
+            rooms = _lbc_attr(ad, "rooms")
+            pieces = int(rooms) if rooms else None
+        except (TypeError, ValueError):
+            pass
+
+        dpe_raw = (_lbc_attr(ad, "energy_rate") or "").strip()
+        dpe = dpe_raw[0].upper() if dpe_raw and dpe_raw[0].isalpha() else None
+
+        images = ad.images or []
+
+        return {
+            "id":        f"lbc-{ad.id}",
+            "source":    SOURCE,
+            "titre":     ad.subject or "",
+            "desc":      ad.body or "",
+            "prix":      int(ad.price or 0),
+            "ville":     getattr(loc, "city_label", None) or getattr(loc, "city", "") or "",
+            "cp":        getattr(loc, "zipcode", "") or "",
+            "surface":   surface,
+            "pieces":    pieces,
+            "type_bien": (_lbc_attr(ad, "real_estate_type") or "").lower(),
+            "dpe":       dpe,
+            "lat":       getattr(loc, "lat", None),
+            "lon":       getattr(loc, "lng", None),
+            "date":      ad.first_publication_date or "",
+            "link":      ad.url or f"https://www.leboncoin.fr/ventes_immobilieres/{ad.id}.htm",
+            "image":     images[0] if images else "",
+        }
+    except Exception as e:
+        print(f"[leboncoin] parse lbc erreur: {e}")
+        return None
+
+
+# ─── Repli interne : curl_cffi + User-Agent appli mobile ──────────────────
+# Reproduit la même technique que lbc, en autonome, pour le cas où la lib
+# n'est pas installée sur l'hébergeur.
+import json      # noqa: E402
+import random    # noqa: E402
+import uuid      # noqa: E402
+
+API_URL = "https://api.leboncoin.fr/finder/search"
+HOME_URL = "https://www.leboncoin.fr/"
+
+
+def _user_agent_mobile():
+    ios = random.choice([True, True, False])
+    if ios:
+        ver = random.choice(["18.3", "18.4", "18.5", "18.6", "26.0", "26.1"])
+        app = random.choice(["101.44.0", "101.43.1", "101.42.0", "101.45.0"])
+        return f"LBC;iOS;{ver};iPhone;phone;{uuid.uuid4()};wifi;{app}"
+    ver = random.choice(["12", "13", "14", "15"])
+    model = random.choice(["Pixel 7", "Pixel 8", "SM-G991B", "SM-S918B", "Redmi Note 12"])
+    app = random.choice(["100.85.2", "100.84.1", "100.83.1"])
+    return f"LBC;Android;{ver};{model};phone;{uuid.uuid4().hex[:16]};wifi;{app}"
+
+
+def _payload():
+    return {
+        "filters": {
+            "category": {"id": "9"},
+            "enums": {"ad_type": ["offer"], "real_estate_type": list(REAL_ESTATE_TYPES)},
+            "keywords": {"text": None},
+            "location": {"locations": [{
+                "locationType": "city",
+                "city": VILLE_CENTRE,
+                "label": f"{VILLE_CENTRE} (toute la ville)",
+                "area": {"lat": CENTER_LAT, "lng": CENTER_LON, "radius": int(RADIUS_KM * 1000)},
+            }]},
+            "ranges": {"price": {"min": 0, "max": PRICE_MAX_HARD_CAP}},
+        },
+        "limit": 35, "limit_alu": 3, "offset": 0,
+        "disable_total": True, "extend": True, "listing_source": "direct-search",
+        "sort_by": "time", "sort_order": "desc",
+    }
+
+
+def _nouvelle_session():
+    try:
+        from curl_cffi import requests as cffi
+    except Exception as e:
+        print(f"[leboncoin] curl_cffi absent ({e}) — repli impossible")
+        return None
+    navigateur = random.choice(["safari_ios", "chrome_android", "safari", "firefox"])
+    s = cffi.Session(impersonate=navigateur)
+    s.headers.update({
+        "User-Agent": _user_agent_mobile(),
+        "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site",
+    })
+    try:
+        s.get(HOME_URL, timeout=30)  # amorce les cookies DataDome
+    except Exception:
+        pass
+    return s
+
+
+def _search_interne(max_essais=4):
+    dernier = None
+    for essai in range(1, max_essais + 1):
+        session = _nouvelle_session()
+        if session is None:
+            diag.set_status(SOURCE, "Ni la lib lbc ni curl_cffi ne sont installés", bloque=False)
+            return []
+        try:
+            r = session.post(API_URL, json=_payload(), timeout=30)
+            if r.status_code == 200:
+                ads = r.json().get("ads", [])
+                print(f"[leboncoin] repli interne (essai {essai}) → {len(ads)} annonces")
+                if not ads:
+                    diag.set_status(SOURCE, "API mobile OK mais aucune annonce dans la zone/les critères")
+                return [parsed for a in ads if (parsed := _parse_api_ad(a))]
+            dernier = f"HTTP {r.status_code}"
+            print(f"[leboncoin] repli interne (essai {essai}) → {dernier}, nouvelle session")
+        except Exception as e:
+            dernier = f"injoignable ({type(e).__name__})"
+            print(f"[leboncoin] repli interne (essai {essai}) → {dernier}")
+
+    diag.set_status(SOURCE, f"Bloqué après {max_essais} tentatives (dernier : {dernier})", bloque=True)
     return []
 
 
-# ─── Normalisation ────────────────────────────────────────────────────────
-def parse_ad(ad):
+def _parse_api_ad(ad):
     try:
         prix_list = ad.get("price") or [0]
-        prix = prix_list[0] if prix_list else 0
+        prix = prix_list[0] if isinstance(prix_list, list) else prix_list
         loc = ad.get("location", {}) or {}
         attrs = {a["key"]: a.get("value_label", a.get("value", "")) for a in ad.get("attributes", [])}
 
@@ -183,7 +225,6 @@ def parse_ad(ad):
             surface = int(float(attrs.get("square", 0)))
         except (TypeError, ValueError):
             surface = 0
-
         try:
             pieces = int(attrs.get("rooms")) if attrs.get("rooms") else None
         except (TypeError, ValueError):
@@ -192,12 +233,19 @@ def parse_ad(ad):
         dpe_raw = (attrs.get("energy_rate") or "").strip()
         dpe = dpe_raw[0].upper() if dpe_raw and dpe_raw[0].isalpha() else None
 
+        images = ad.get("images") or {}
+        image = ""
+        if isinstance(images, dict):
+            image = images.get("thumb_url") or (images.get("urls") or [""])[0]
+        elif isinstance(images, list) and images:
+            image = images[0]
+
         return {
             "id":        f"lbc-{ad.get('list_id')}",
             "source":    SOURCE,
             "titre":     ad.get("subject", ""),
             "desc":      ad.get("body", ""),
-            "prix":      prix,
+            "prix":      int(prix or 0),
             "ville":     loc.get("city_label") or loc.get("city", ""),
             "cp":        loc.get("zipcode", ""),
             "surface":   surface,
@@ -208,8 +256,8 @@ def parse_ad(ad):
             "lon":       loc.get("lng"),
             "date":      ad.get("first_publication_date", ""),
             "link":      ad.get("url", f"https://www.leboncoin.fr/ventes_immobilieres/{ad.get('list_id')}.htm"),
-            "image":     (ad.get("images") or {}).get("thumb_url", ""),
+            "image":     image,
         }
     except Exception as e:
-        print(f"[leboncoin] parse erreur: {e}")
+        print(f"[leboncoin] parse api erreur: {e}")
         return None
