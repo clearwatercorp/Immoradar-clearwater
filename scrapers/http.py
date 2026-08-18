@@ -35,6 +35,34 @@ def get_session():
     return _sessions["plain"]
 
 
+def get_impersonate_session():
+    """Session curl_cffi imitant l'empreinte TLS/HTTP2 réelle de Chrome.
+
+    Indispensable face à DataDome (Leboncoin) : ces protections identifient
+    `requests` dès la poignée de main TLS, avant même de regarder les
+    en-têtes HTTP — un User-Agent de navigateur ne suffit donc pas.
+    Repli sur une session classique si curl_cffi n'est pas installé.
+    """
+    if "impersonate" not in _sessions:
+        try:
+            from curl_cffi import requests as cffi_requests
+            s = cffi_requests.Session(impersonate="chrome")
+            s.headers.update({"accept-language": BROWSER_HEADERS["accept-language"]})
+            _sessions["impersonate"] = s
+        except Exception as e:
+            print(f"[http] curl_cffi indisponible ({e}), repli sur requests")
+            _sessions["impersonate"] = get_session()
+    return _sessions["impersonate"]
+
+
+def impersonate_disponible():
+    try:
+        import curl_cffi  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 def get_cloudscraper_session():
     """Session cloudscraper (résout le challenge JS Cloudflare). Repli sur
     une session classique si cloudscraper n'est pas installé."""

@@ -1,21 +1,35 @@
-"""Scraper Leboncoin — structure calquée sur le module woob
-(modules/leboncoin) :
+"""Scraper Leboncoin — source prioritaire (de loin le plus gros volume
+d'annonces, et le seul où les particuliers publient massivement).
+
+Structure calquée sur le module woob (modules/leboncoin) :
   - catégorie "9" = Ventes immobilières, real_estate_type "1"=maison/"2"=appartement
-  - la clé d'API n'est pas une constante : elle est extraite du JSON
-    __NEXT_DATA__ de la page d'accueil (runtimeConfig.API.KEY) à chaque
-    session, puis mise en cache et rafraîchie si l'API la rejette.
-  - le filtre géographique se fait par liste de villes/codes postaux
-    (filters.location.city_zipcodes), pas par rayon lat/lng.
+  - la clé d'API est extraite du JSON __NEXT_DATA__ de la page d'accueil
+    (runtimeConfig.API.KEY), elle n'est pas constante.
+  - le filtre géographique passe par filters.location.city_zipcodes.
   - attributes["real_estate_type"] est déjà un libellé texte.
+
+Leboncoin est protégé par DataDome, qui filtre en grande partie sur
+l'empreinte TLS : une session `requests` est repérée dès la poignée de main,
+avant même la lecture des en-têtes. D'où la cascade ci-dessous, qui essaie
+plusieurs combinaisons et s'arrête à la première qui fonctionne :
+
+  session   : empreinte TLS Chrome (curl_cffi) puis requests classique
+  clé d'API : extraite de la page d'accueil, sinon clé publique connue
+              (permet de tenter l'API même quand la page HTML est bloquée,
+              l'API mobile étant souvent moins filtrée que le site web)
+  filtre géo: liste de communes, puis rayon lat/lon
+
+La combinaison retenue est rapportée dans le diagnostic, ce qui permet de
+simplifier ensuite en ne gardant que celle qui marche réellement.
 """
 
 import json
 
 from bs4 import BeautifulSoup
 
-from config import PRICE_MAX_HARD_CAP
+from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM
 from zones import COMMUNES
-from .http import get_session, TIMEOUT
+from .http import get_session, get_impersonate_session, impersonate_disponible, TIMEOUT
 from . import diag
 
 SOURCE = "Leboncoin"
@@ -25,37 +39,55 @@ REAL_ESTATE_TYPES = ["1", "2"]  # maison, appartement
 HOME_URL = "https://www.leboncoin.fr/annonces/offres"
 API_URL = "https://api.leboncoin.fr/finder/search"
 
-_api_key_cache = {"key": None}
+# Clé publique historiquement utilisée par le site. Sert uniquement de repli
+# quand la page d'accueil est inaccessible : si elle est périmée, l'API
+# répondra 401 et la cascade passera à la combinaison suivante.
+CLE_REPLI = "ba0c2dad52b3ec"
+
+_cache = {"cle": None, "origine": None}
 
 
-def _fetch_api_key(force=False):
-    if _api_key_cache["key"] and not force:
-        return _api_key_cache["key"]
-    try:
-        r = get_session().get(HOME_URL, timeout=TIMEOUT)
-        if r.status_code != 200:
-            print(f"[leboncoin] page d'accueil HTTP {r.status_code} — clé API non récupérable")
-            diag.set_status(SOURCE, f"Page d'accueil HTTP {r.status_code} — blocage anti-robot probable", bloque=True)
-            return None
-        tag = BeautifulSoup(r.text, "html.parser").find("script", id="__NEXT_DATA__")
-        if not tag or not tag.string:
-            print("[leboncoin] __NEXT_DATA__ introuvable sur la page d'accueil")
-            diag.set_status(SOURCE, "Page d'accueil reçue mais __NEXT_DATA__ absent — page anti-robot ou structure changée", bloque=True)
-            return None
-        key = json.loads(tag.string).get("runtimeConfig", {}).get("API", {}).get("KEY")
-        if key:
-            _api_key_cache["key"] = key
-        else:
-            print("[leboncoin] clé API absente du __NEXT_DATA__")
-            diag.set_status(SOURCE, "Clé d'API absente du __NEXT_DATA__ — structure du site changée")
-        return key
-    except Exception as e:
-        print(f"[leboncoin] erreur récupération clé API: {e}")
-        diag.set_status(SOURCE, f"Connexion impossible : {type(e).__name__}", bloque=True)
+# ─── Clé d'API ────────────────────────────────────────────────────────────
+def _extraire_cle(html):
+    tag = BeautifulSoup(html, "html.parser").find("script", id="__NEXT_DATA__")
+    if not tag or not tag.string:
         return None
+    return json.loads(tag.string).get("runtimeConfig", {}).get("API", {}).get("KEY")
 
 
-def _payload():
+def _obtenir_cle(session, trace):
+    """Clé fraîche depuis la page d'accueil, sinon clé de repli."""
+    if _cache["cle"]:
+        return _cache["cle"], _cache["origine"]
+    try:
+        r = session.get(HOME_URL, timeout=TIMEOUT)
+        if r.status_code == 200:
+            cle = _extraire_cle(r.text)
+            if cle:
+                _cache.update(cle=cle, origine="page d'accueil")
+                return cle, "page d'accueil"
+            trace.append("page d'accueil 200 mais __NEXT_DATA__ inexploitable")
+        else:
+            trace.append(f"page d'accueil HTTP {r.status_code}")
+    except Exception as e:
+        trace.append(f"page d'accueil injoignable ({type(e).__name__})")
+    return CLE_REPLI, "repli"
+
+
+# ─── Filtres de recherche ─────────────────────────────────────────────────
+def _location_communes():
+    return {
+        "city_zipcodes": [
+            {"city": c["nom"], "zipcode": c["cp"], "label": f"{c['nom']} {c['cp']}"} for c in COMMUNES
+        ]
+    }
+
+
+def _location_rayon():
+    return {"area": {"lat": CENTER_LAT, "lng": CENTER_LON, "radius": int(RADIUS_KM * 1000)}}
+
+
+def _payload(location):
     return {
         "limit": 35,
         "limit_alu": 3,
@@ -66,60 +98,80 @@ def _payload():
         "listing_source": "direct-search",
         "filters": {
             "category": {"id": CATEGORY_VENTE},
-            "location": {
-                "city_zipcodes": [
-                    {"city": c["nom"], "zipcode": c["cp"], "label": f"{c['nom']} {c['cp']}"} for c in COMMUNES
-                ],
-            },
+            "location": location,
             "enums": {"ad_type": ["offer"], "real_estate_type": REAL_ESTATE_TYPES},
             "ranges": {"price": {"max": PRICE_MAX_HARD_CAP}},
         },
     }
 
 
-def _post_search(api_key):
-    return get_session().post(
-        API_URL,
-        data=json.dumps(_payload()),
-        headers={
-            "api_key": api_key,
-            "content-type": "application/json",
-            "origin": "https://www.leboncoin.fr",
-            "referer": "https://www.leboncoin.fr/recherche",
-        },
-        timeout=TIMEOUT,
-    )
+def _tenter(session, cle, location):
+    """Un essai de recherche. Retourne (annonces_brutes, note)."""
+    try:
+        r = session.post(
+            API_URL,
+            data=json.dumps(_payload(location)),
+            headers={
+                "api_key": cle,
+                "content-type": "application/json",
+                "accept": "*/*",
+                "origin": "https://www.leboncoin.fr",
+                "referer": "https://www.leboncoin.fr/recherche",
+            },
+            timeout=TIMEOUT,
+        )
+    except Exception as e:
+        return None, f"injoignable ({type(e).__name__})"
+
+    if r.status_code != 200:
+        return None, f"HTTP {r.status_code}"
+    try:
+        ads = r.json().get("ads", [])
+    except Exception:
+        return None, "réponse illisible (non JSON)"
+    if not ads:
+        return None, "HTTP 200 mais 0 annonce"
+    return ads, f"{len(ads)} annonces"
+
+
+def _sessions():
+    sessions = []
+    if impersonate_disponible():
+        sessions.append(("empreinte Chrome", get_impersonate_session()))
+    sessions.append(("requests", get_session()))
+    return sessions
 
 
 def search():
     diag.clear(SOURCE)
-    api_key = _fetch_api_key()
-    if not api_key:
-        return []
-    try:
-        r = _post_search(api_key)
-        if r.status_code in (401, 403):
-            # clé peut-être expirée : une seule tentative de rafraîchissement
-            api_key = _fetch_api_key(force=True)
-            if not api_key:
-                return []
-            r = _post_search(api_key)
+    trace = []
 
-        print(f"[leboncoin] HTTP {r.status_code}")
-        if r.status_code != 200:
-            diag.set_status(SOURCE, f"API de recherche HTTP {r.status_code}", bloque=r.status_code in (401, 403, 429))
-            return []
-        ads = r.json().get("ads", [])
-        if not ads:
-            diag.set_status(SOURCE, "API OK mais aucune annonce renvoyée — filtres de recherche à vérifier")
-    except Exception as e:
-        print(f"[leboncoin] erreur: {e}")
-        diag.set_status(SOURCE, f"Erreur de recherche : {type(e).__name__}", bloque=True)
-        return []
+    for nom_session, session in _sessions():
+        cle, origine = _obtenir_cle(session, trace)
 
-    return [parsed for a in ads if (parsed := parse_ad(a))]
+        for nom_filtre, location in (("communes", _location_communes()), ("rayon", _location_rayon())):
+            ads, note = _tenter(session, cle, location)
+            etiquette = f"{nom_session}/clé {origine}/{nom_filtre}"
+            print(f"[leboncoin] {etiquette} → {note}")
+            trace.append(f"{etiquette} : {note}")
+
+            if ads:
+                diag.set_status(SOURCE, f"OK via {etiquette}")
+                return [parsed for a in ads if (parsed := parse_ad(a))]
+
+            # Clé refusée : elle est peut-être périmée, on la réinitialise
+            # pour que la session suivante en redemande une fraîche.
+            if note.startswith("HTTP 401") or note.startswith("HTTP 403"):
+                _cache.update(cle=None, origine=None)
+                break
+
+    resume = " | ".join(trace[-4:]) or "aucune tentative aboutie"
+    bloque = any(("HTTP 40" in t) or ("HTTP 429" in t) or ("injoignable" in t) for t in trace)
+    diag.set_status(SOURCE, resume, bloque=bloque)
+    return []
 
 
+# ─── Normalisation ────────────────────────────────────────────────────────
 def parse_ad(ad):
     try:
         prix_list = ad.get("price") or [0]
@@ -142,7 +194,7 @@ def parse_ad(ad):
 
         return {
             "id":        f"lbc-{ad.get('list_id')}",
-            "source":    "Leboncoin",
+            "source":    SOURCE,
             "titre":     ad.get("subject", ""),
             "desc":      ad.get("body", ""),
             "prix":      prix,
