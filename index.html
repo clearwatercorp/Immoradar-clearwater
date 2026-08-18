@@ -102,6 +102,31 @@
   .popup-price{font-weight:800;font-size:15px;color:#e0eaf5}
   .popup-title{font-size:12px;color:#7ac3f0;margin:3px 0 6px}
   .popup-link{font-size:12px;color:#7ac3f0}
+
+  /* ─── Mobile (consultation depuis un téléphone) ─────────────────────── */
+  @media (max-width: 640px){
+    .topbar{padding:12px 14px}
+    .topbar-right{width:100%}
+    .search-input{flex:1;width:auto;min-width:0}
+    .btn-refresh{flex:1}
+    .main{padding:16px 12px}
+    /* Les deux stratégies côte à côte deviennent illisibles en étroit */
+    .strategy-tabs{flex-direction:column;gap:8px}
+    .strategy-tab{padding:12px 14px}
+    .filters-bar{gap:10px 14px;padding:12px 14px}
+    .filter-group{flex:1;min-width:140px}
+    .filter-input,.filter-select{flex:1;width:auto;min-width:0}
+    .filter-meta{margin-left:0}
+    /* Pastilles de stats : 2 par ligne, largeurs égales */
+    .stat-pill{flex:1 1 calc(50% - 4px);min-width:0}
+    .card-header{padding:12px 13px;gap:8px}
+    .card-title{font-size:14px}
+    .stats-row{padding:0 13px 12px}
+    .card-detail{padding:13px}
+    .nego-card{min-width:0;flex:1 1 100%}
+    #map{height:420px}
+    .legend{line-height:1.9;padding:13px 15px}
+  }
 </style>
 </head>
 <body>
@@ -117,7 +142,7 @@
       <button id="btn-view-map" data-view="map">🗺️ Carte</button>
     </div>
     <input class="search-input" id="search-input" placeholder="Ville, titre…"/>
-    <button class="btn-refresh" id="btn-refresh">⟳ Actualiser</button>
+    <button class="btn-refresh" id="btn-refresh">⟳ Rechercher</button>
   </div>
 </div>
 
@@ -229,7 +254,7 @@ function renderLegend(){
     <strong>Coût travaux estimé (€/m²) :</strong> bon état ${meta.travaux_cost_m2.bon_etat} · à rafraîchir ${meta.travaux_cost_m2.a_rafraichir}
       · à rénover ${meta.travaux_cost_m2.a_renover} · gros travaux ${meta.travaux_cost_m2.gros_travaux}<br/>
     <span style="color:#8a6a3a">⚠️ Estimations heuristiques v1 (mots-clés + références de marché approximatives) — seront affinées avec un modèle
-    entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — refresh auto toutes les ${meta.refresh_min} min.</span><br/>
+    entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — bouton « Rechercher » pour interroger les sites à la demande (recherche auto toutes les ${meta.refresh_min} min tant que le serveur tourne).</span><br/>
     <span class="new-dot"></span> = annonce détectée pour la première fois il y a moins de 24h
   `;
 }
@@ -257,40 +282,69 @@ function parseAnnonce(raw){
   };
 }
 
-async function loadAnnonces(){
-  const btn = document.getElementById("btn-refresh");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner">⟳</span> Chargement…';
-  document.getElementById("refresh-info").textContent = "Récupération en cours…";
+let pollTimer = null;
 
+function setBusy(busy){
+  const btn = document.getElementById("btn-refresh");
+  btn.disabled = busy;
+  btn.innerHTML = busy ? '<span class="spinner">⟳</span> Recherche…' : "⟳ Rechercher";
+}
+
+// Déclenche une nouvelle recherche sur les 4 sites (à la demande).
+async function lancerRecherche(){
+  setBusy(true);
+  document.getElementById("refresh-info").textContent = "Recherche sur les 4 sites…";
   try{
-    const res = await fetch("/api/annonces", {signal: AbortSignal.timeout(20000)});
+    await fetch("/api/refresh", {method:"POST", signal: AbortSignal.timeout(15000)});
+  }catch(e){
+    // La recherche tourne côté serveur même si la réponse tarde : on suit
+    // l'avancement via le sondage ci-dessous plutôt que d'afficher une erreur.
+  }
+  loadAnnonces();
+}
+
+// Lit les annonces déjà collectées (n'interroge pas les sites).
+async function loadAnnonces(){
+  try{
+    const res = await fetch("/api/annonces", {signal: AbortSignal.timeout(30000)});
     if(!res.ok) throw new Error("HTTP "+res.status);
     const json = await res.json();
     allAnnonces = (json.annonces||[]).map(parseAnnonce);
+    const enCours = !!json.recherche_en_cours;
 
     document.getElementById("error-banner").style.display="none";
     document.getElementById("sources-info").style.display="flex";
     const srcHtml = Object.entries(json.sources||{}).map(([name,s])=>
       s.ok ? `<span>${esc(name)}: ${s.retenues}</span>` : `<span style="color:#ff8888">${esc(name)}: erreur</span>`
     ).join(" · ");
-    const age = json.age_min!=null ? `Données de ${json.age_min} min` : "En attente du premier scraping";
-    document.getElementById("sources-info").innerHTML = `<span>${allAnnonces.length} annonces</span> · ${age} · ${srcHtml||"aucune source"}`;
+    const age = json.age_min!=null ? `Données de ${json.age_min} min` : "Aucune recherche effectuée";
+    document.getElementById("sources-info").innerHTML =
+      (enCours ? `<span class="spinner">⟳</span> <span>Recherche en cours…</span> · ` : "") +
+      `<span>${allAnnonces.length} annonces</span> · ${age} · ${srcHtml||"aucune source"}`;
 
-    if(allAnnonces.length===0){
+    if(allAnnonces.length===0 && !enCours){
       document.getElementById("error-banner").style.display="block";
       document.getElementById("error-banner").innerHTML =
-        `⚠️ <strong>Aucune annonce pour l'instant</strong> — le serveur scrape les 4 sources au démarrage (peut prendre 1-2 min), ou aucune annonce ne correspond aux critères actuellement.`;
+        `⚠️ <strong>Aucune annonce</strong> — lancez une recherche avec le bouton « Rechercher », ou aucune annonce ne correspond aux critères actuellement.`;
+    }
+
+    document.getElementById("refresh-info").textContent = enCours
+      ? "Recherche sur les 4 sites…"
+      : `Dernière lecture : ${new Date().toLocaleTimeString("fr-FR")}`;
+
+    clearTimeout(pollTimer);
+    if(enCours){
+      setBusy(true);
+      pollTimer = setTimeout(loadAnnonces, 4000);  // suit l'avancement
+    }else{
+      setBusy(false);
     }
   }catch(e){
     document.getElementById("error-banner").style.display="block";
     document.getElementById("error-banner").innerHTML = `⚠️ <strong>Erreur de chargement</strong> — ${esc(e.message)}`;
+    setBusy(false);
   }
 
-  document.getElementById("refresh-info").textContent =
-    `Dernière MAJ : ${new Date().toLocaleTimeString("fr-FR")} · Refresh auto toutes les ${meta.refresh_min} min`;
-  btn.disabled=false;
-  btn.innerHTML="⟳ Actualiser";
   renderAll();
 }
 
@@ -515,7 +569,7 @@ document.getElementById("annonces-list").addEventListener("click", e=>{
   document.getElementById(id).addEventListener("change", renderAll);
 });
 document.getElementById("search-input").addEventListener("input", renderAll);
-document.getElementById("btn-refresh").addEventListener("click", loadAnnonces);
+document.getElementById("btn-refresh").addEventListener("click", lancerRecherche);
 
 document.querySelectorAll(".view-toggle button").forEach(btn=>{
   btn.addEventListener("click", ()=>{

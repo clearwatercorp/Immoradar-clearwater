@@ -12,7 +12,7 @@ from strategies import location_saisonniere, marchand_de_biens
 app = Flask(__name__)
 
 _lock   = threading.Lock()
-_status = {"ts": 0, "sources": {}}
+_status = {"ts": 0, "sources": {}, "running": False, "nouvelles": 0}
 
 SCRAPERS = {
     "Leboncoin": leboncoin.search,
@@ -25,7 +25,15 @@ storage.init_db()
 
 
 def refresh_cache():
-    with _lock:
+    """Lance un cycle de scraping. Retourne False si un cycle est déjà en
+    cours (les recherches ne s'empilent pas : le bouton « Actualiser » de
+    l'interface peut être cliqué sans risque)."""
+    if not _lock.acquire(blocking=False):
+        print("[refresh] déjà en cours — demande ignorée")
+        return False
+
+    _status["running"] = True
+    try:
         print("[refresh] Démarrage...")
         all_ads = []
         sources_status = {}
@@ -43,7 +51,12 @@ def refresh_cache():
         new_ids = storage.upsert_ads(all_ads)
         _status["ts"] = time.time()
         _status["sources"] = sources_status
+        _status["nouvelles"] = len(new_ids)
         print(f"[refresh] {len(all_ads)} annonces au total, {len(new_ids)} nouvelles")
+    finally:
+        _status["running"] = False
+        _lock.release()
+    return True
 
 
 def auto_refresh():
@@ -92,12 +105,25 @@ def api_annonces():
     ads = [enrich(a) for a in ads]
     age_min = round((now - _status["ts"]) / 60, 1) if _status["ts"] else None
     return jsonify({
-        "ok":       True,
-        "count":    len(ads),
-        "age_min":  age_min,
-        "sources":  _status["sources"],
-        "annonces": ads,
+        "ok":          True,
+        "count":       len(ads),
+        "age_min":     age_min,
+        "sources":     _status["sources"],
+        "recherche_en_cours": _status["running"],
+        "nouvelles":   _status["nouvelles"],
+        "annonces":    ads,
     })
+
+
+@app.route("/api/refresh", methods=["POST"])
+def api_refresh():
+    """Déclenche une recherche à la demande, sans bloquer la requête HTTP
+    (le scraping des 4 sites dépasse souvent le timeout d'un serveur web) :
+    l'interface interroge ensuite /api/annonces pour suivre l'avancement."""
+    if _status["running"]:
+        return jsonify({"lancee": False, "en_cours": True})
+    threading.Thread(target=refresh_cache, daemon=True).start()
+    return jsonify({"lancee": True, "en_cours": True})
 
 
 @app.route("/api/meta")

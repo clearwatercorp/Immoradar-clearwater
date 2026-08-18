@@ -1,0 +1,26 @@
+# Déploiement en un clic sur Render (https://render.com) — aucune ligne de
+# commande nécessaire : « New + » → « Blueprint » → choisir ce dépôt.
+#
+# Note : le plan gratuit met le service en veille après ~15 min sans visite
+# (le réveil prend ~30 s à la visite suivante) et son disque est effacé à
+# chaque redémarrage — la base des annonces déjà vues repart donc de zéro,
+# ce qui remet tout en « NOUVEAU » après une longue inactivité. Passer le
+# plan à « starter » et ajouter un disque persistant supprime ces deux
+# limites.
+services:
+  - type: web
+    name: immoradar
+    runtime: python
+    plan: free
+    region: frankfurt          # au plus près des sites français
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Les critères de recherche sont modifiables ici sans toucher au code
+      # (sinon les valeurs par défaut de config.py s'appliquent).
+      # - key: PRICE_MAX_HARD_CAP
+      #   value: "1500000"
+      # - key: RADIUS_KM
+      #   value: "10"

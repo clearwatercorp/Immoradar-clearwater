@@ -14,7 +14,37 @@ Sources : Leboncoin · PAP · SeLoger · Bien'ici. Aucune clé d'API n'est néce
 
 ---
 
-## Lancer l'outil (sans terminal)
+## Option A — En ligne, sans rien installer (accès PC + téléphone)
+
+À privilégier si vous ne pouvez rien installer sur votre machine, ou si vous
+voulez consulter depuis votre téléphone. Tout se fait au navigateur.
+
+1. Créer un compte gratuit sur [render.com](https://render.com) (connexion via GitHub).
+2. **`New +`** → **`Blueprint`** → sélectionner ce dépôt → **`Apply`**.
+   Render lit le fichier `render.yaml` et configure tout seul.
+3. Au bout de quelques minutes, une URL du type `https://immoradar-xxxx.onrender.com`
+   est disponible : ouvrez-la sur PC **et** sur téléphone (l'interface s'adapte).
+4. Dans l'interface, le bouton **« Rechercher »** interroge les 4 sites **à la
+   demande** ; la page suit l'avancement et se remplit toute seule.
+
+**Ce qu'il faut savoir sur le plan gratuit :**
+
+| Limite | Conséquence concrète |
+|---|---|
+| Mise en veille après ~15 min sans visite | La 1ʳᵉ ouverture prend ~30 s à se réveiller |
+| Disque effacé à chaque redémarrage | L'historique des annonces vues repart de zéro, donc tout réapparaît en « NOUVEAU » |
+| IP de datacenter | Les sites immobiliers bloquent plus volontiers qu'une connexion perso — certaines sources peuvent renvoyer 0 annonce |
+
+Le plan payant « starter » (~7 $/mois) + un disque persistant supprime les deux
+premières limites. Pour la troisième, voir la remarque sur les sources plus bas.
+
+> L'URL Render est publique (non indexée mais accessible à qui la connaît). Les
+> données affichées sont des annonces immobilières publiques ; demandez-moi si
+> vous souhaitez malgré tout protéger l'accès par un mot de passe.
+
+---
+
+## Option B — En local (sans terminal, mais Python requis)
 
 1. **Télécharger le projet** : sur la page GitHub du dépôt, bouton vert **`Code`**
    → **`Download ZIP`**. Décompressez le dossier où vous voulez.
@@ -48,6 +78,9 @@ dialogue. À faire une seule fois.
   annonces, mais triées et évaluées selon la logique de chaque stratégie.
 - **Vue Liste / Carte** : la carte colore chaque bien selon son score.
 - **Filtres** : prix max, surface min, type (appartement/maison), nouveautés.
+- **Bouton « Rechercher »** : interroge les 4 sites **à la demande** (compter 1 à
+  2 min). La page affiche « Recherche en cours… » et se met à jour toute seule ;
+  cliquer plusieurs fois n'empile pas les recherches.
 - **Cliquer sur une annonce** déplie le détail (calculs, scénarios de négociation,
   état détecté, potentiel de division).
 - Le badge vert **NOUVEAU** signale une annonce vue pour la première fois il y a
@@ -89,11 +122,16 @@ proprement pour le cycle sans empêcher les trois autres de fonctionner.
 
 ---
 
-## Hébergement en ligne (optionnel)
+## Local ou en ligne : que choisir ?
 
-Un `Procfile` est présent pour un déploiement type Render/Heroku, mais **ce n'est
-pas recommandé ici** : depuis une IP de datacenter, les sites immobiliers bloquent
-beaucoup plus agressivement le scraping, et les offres gratuites effacent le disque
-à chaque redémarrage — ce qui ferait perdre l'historique des annonces déjà vues,
-donc la détection des nouveautés. Une exécution depuis votre machine donne de
-bien meilleurs résultats.
+- **En local** (option B) : meilleur taux de réussite du scraping, car la requête
+  part de votre connexion personnelle — les sites bloquent nettement moins. Mais
+  il faut Python sur la machine, et l'outil n'est accessible que depuis celle-ci.
+- **En ligne** (option A) : rien à installer, accessible depuis n'importe quel
+  appareil dont votre téléphone, mais l'IP de datacenter est davantage bloquée
+  et le plan gratuit efface l'historique.
+
+Si l'hébergement en ligne fait remonter 0 annonce sur une ou plusieurs sources,
+c'est ce blocage qui est en cause. Deux réponses possibles : passer cette source
+par un service de contournement anti-robot (payant), ou lancer l'outil en local
+quand vous voulez une collecte complète. Dites-le-moi et j'adapte.
