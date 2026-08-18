@@ -18,7 +18,15 @@ CACHE_TTL    = int(os.environ.get("CACHE_TTL", 15 * 60))
 NEW_WINDOW_H = int(os.environ.get("NEW_WINDOW_H", 24))
 DB_PATH      = os.environ.get("DB_PATH", "annonces.db")
 
-# Proxy résidentiel/mobile — indispensable pour Leboncoin, PAP et SeLoger
+# Scrapfly — service de scraping qui franchit DataDome/Cloudflare/PerimeterX
+# via ses propres IP résidentielles. Palier GRATUIT permanent (1000 crédits/
+# mois, sans carte). Mode recommandé en hébergement : coller ici la clé du
+# compte gratuit (https://scrapfly.io) débloque Leboncoin, PAP et SeLoger.
+# Laisser vide pour un scraping direct (Bien'ici seule en hébergement, les 4
+# en local).
+SCRAPFLY_KEY = os.environ.get("SCRAPFLY_KEY", "").strip()
+
+# Proxy résidentiel/mobile — alternative à Scrapfly, indispensable pour Leboncoin, PAP et SeLoger
 # depuis un hébergeur : leurs protections (DataDome, Cloudflare) bloquent les
 # IP de datacenter dès la 1re requête, quelle que soit la finesse du scraping.
 # Sans proxy, seule Bien'ici (non protégée) répond. Format standard :

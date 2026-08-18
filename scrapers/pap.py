@@ -15,8 +15,8 @@ from bs4 import BeautifulSoup
 
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
-from .http import get_cloudscraper_session, TIMEOUT
-from . import diag
+from .http import get_cloudscraper_session
+from . import diag, fetch
 
 SOURCE = "PAP"
 
@@ -35,7 +35,7 @@ def _resolve_geo_ids(force=False):
     derniere_erreur = {"msg": None, "bloque": False}
     for commune in COMMUNES:
         try:
-            r = session.get(AC_GEO_URL.format(q=quote(commune["nom"])), timeout=TIMEOUT)
+            r = fetch.get(AC_GEO_URL.format(q=quote(commune["nom"])), session=session)
             if r.status_code != 200:
                 derniere_erreur["msg"] = f"autocomplete HTTP {r.status_code}"
                 derniere_erreur["bloque"] = r.status_code in (403, 429, 503)
@@ -83,11 +83,11 @@ def search():
     }
 
     try:
-        r = get_cloudscraper_session().post(
+        r = fetch.post(
             SEARCH_URL,
             data=urlencode(data, doseq=True),
             headers={"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
-            timeout=TIMEOUT,
+            session=get_cloudscraper_session(),
         )
         print(f"[pap] HTTP {r.status_code}")
         if r.status_code != 200:

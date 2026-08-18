@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 from config import PRICE_MAX_HARD_CAP, CENTER_LAT, CENTER_LON, RADIUS_KM, VILLE_CENTRE, PROXY_URL
 from .http import proxies_dict
-from . import diag
+from . import diag, fetch
 
 SOURCE = "Leboncoin"
 
@@ -34,11 +34,42 @@ REAL_ESTATE_TYPES = ("1", "2")  # maison, appartement
 
 def search():
     diag.clear(SOURCE)
+    # En hébergement avec Scrapfly : l'API mobile passée par Scrapfly franchit
+    # DataDome. C'est le chemin prioritaire dès qu'une clé est configurée.
+    if fetch.enabled():
+        return _search_via_scrapfly()
+    # Sinon (usage local / résidentiel) : la lib lbc suffit.
     ads = _search_via_lbc()
     if ads is not None:
         return ads
-    # Repli si la lib lbc est absente ou a échoué autrement que par blocage.
     return _search_interne()
+
+
+def _search_via_scrapfly():
+    try:
+        r = fetch.post(
+            API_URL,
+            json_body=_payload(),
+            headers={"api_key": _CLE_API_PUBLIQUE},
+            country="fr",
+        )
+        if r.status_code != 200:
+            diag.set_status(SOURCE, f"API mobile via Scrapfly : HTTP {r.status_code}", bloque=r.status_code in (401, 403, 429))
+            return []
+        ads = r.json().get("ads", [])
+        print(f"[leboncoin] Scrapfly → {len(ads)} annonces")
+        if not ads:
+            diag.set_status(SOURCE, "API mobile OK (Scrapfly) mais aucune annonce dans la zone/les critères")
+        return [parsed for a in ads if (parsed := _parse_api_ad(a))]
+    except Exception as e:
+        print(f"[leboncoin] Scrapfly erreur: {e}")
+        diag.set_status(SOURCE, f"Erreur via Scrapfly : {type(e).__name__}", bloque=True)
+        return []
+
+
+# Clé publique de l'appli mobile (historiquement stable). Utilisée uniquement
+# via Scrapfly, où DataDome est franchi par le service.
+_CLE_API_PUBLIQUE = "ba0c2dad52b3ec"
 
 
 # ─── Moteur principal : bibliothèque lbc ──────────────────────────────────

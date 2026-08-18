@@ -331,13 +331,16 @@ async function loadAnnonces(){
     // par l'anti-robot faute de proxy résidentiel.
     const sources = Object.values(json.sources||{});
     const bloquees = sources.filter(s=>s.ok && s.bloque).length;
-    if(bloquees>=2 && !meta.proxy_actif && !enCours){
+    const modeDeblocage = meta.scrapfly_actif || meta.proxy_actif;
+    if(bloquees>=2 && !modeDeblocage && !enCours){
       document.getElementById("error-banner").style.display="block";
       document.getElementById("error-banner").innerHTML =
         `⛔ <strong>${bloquees} sources bloquées par leur protection anti-robot.</strong> `+
-        `Depuis un hébergeur, Leboncoin, PAP et SeLoger refusent les adresses de datacenter — `+
-        `c'est le cas ici. Pour les débloquer, renseignez un <strong>proxy résidentiel</strong> `+
-        `(variable <code>PROXY_URL</code>, voir le README). Bien'ici, non protégée, fonctionne sans proxy.`;
+        `Depuis un hébergeur, Leboncoin, PAP et SeLoger refusent les adresses de datacenter. `+
+        `Pour les débloquer <strong>gratuitement</strong> : créez un compte gratuit sur `+
+        `<strong>scrapfly.io</strong> (1000 requêtes/mois, sans carte) et collez sa clé dans la `+
+        `variable <code>SCRAPFLY_KEY</code> sur Render (voir le README, section « Débloquer les 4 sources »). `+
+        `Bien'ici, non protégée, fonctionne déjà sans clé.`;
     } else if(allAnnonces.length===0 && !enCours){
       document.getElementById("error-banner").style.display="block";
       document.getElementById("error-banner").innerHTML =

@@ -155,6 +155,7 @@ def api_meta():
         "travaux_cost_m2":        config.TRAVAUX_COST_M2,
         "refresh_min":            config.CACHE_TTL // 60,
         "proxy_actif":            bool(config.PROXY_URL),
+        "scrapfly_actif":         bool(config.SCRAPFLY_KEY),
     })
 
 

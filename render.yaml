@@ -18,8 +18,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      # Proxy résidentiel — décommenter pour débloquer Leboncoin/PAP/SeLoger
-      # depuis l'hébergeur (sans lui, seule Bien'ici répond). Voir le README.
+      # Débloquer Leboncoin/PAP/SeLoger depuis l'hébergeur (sans, seule Bien'ici
+      # répond). Solution gratuite recommandée : clé Scrapfly (compte gratuit,
+      # 1000 requêtes/mois). Se règle plutôt via le tableau de bord Render, ou
+      # décommenter ci-dessous. Voir le README.
+      # - key: SCRAPFLY_KEY
+      #   value: "votre-cle-scrapfly"
+      # Alternative : un proxy résidentiel.
       # - key: PROXY_URL
       #   value: "http://identifiant:motdepasse@hote:port"
       #

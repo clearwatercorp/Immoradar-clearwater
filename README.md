@@ -14,12 +14,12 @@ Sources : Leboncoin · PAP · SeLoger · Bien'ici. Aucune clé d'API n'est néce
 
 > **⚠️ À lire si vous hébergez l'outil en ligne.** Leboncoin (DataDome), PAP et
 > SeLoger (Cloudflare) bloquent les adresses IP de **datacenter** dès la première
-> requête — c'est le cas de tous les hébergeurs (Render, etc.), indépendamment de
-> la qualité du scraping. Depuis un hébergeur, **seule Bien'ici répond** sans
-> configuration. Pour débloquer les trois autres, il faut un **proxy résidentiel**
-> (voir [la section dédiée](#débloquer-leboncoin-pap-seloger--proxy-résidentiel)).
+> requête — c'est le cas de tous les hébergeurs (Render, etc.). Depuis un
+> hébergeur, **seule Bien'ici répond** sans configuration. Pour débloquer les
+> trois autres **gratuitement**, une clé Scrapfly suffit (compte gratuit, 1000
+> requêtes/mois) — voir [Débloquer les 4 sources](#débloquer-les-4-sources-gratuit).
 > En local (option B), depuis votre connexion personnelle, les quatre sources
-> fonctionnent sans proxy.
+> fonctionnent sans rien configurer.
 
 ---
 
@@ -54,33 +54,42 @@ résidentiel — voir ci-dessous.
 
 ---
 
-## Débloquer Leboncoin, PAP, SeLoger : proxy résidentiel
+## Débloquer les 4 sources (gratuit)
 
-En hébergement, ces trois sources refusent l'IP de datacenter. La parade standard
-(et, en 2026, la seule fiable) est de faire sortir les requêtes par un **proxy
-résidentiel** : une IP de particulier, que les protections laissent passer.
+En hébergement, Leboncoin, PAP et SeLoger refusent l'IP de datacenter. La solution
+la plus simple et **gratuite** est de faire passer ces requêtes par **Scrapfly**,
+un service qui franchit ces protections via ses propres IP résidentielles. Son
+palier gratuit (1000 requêtes/mois, **sans carte bancaire**, renouvelé chaque mois)
+suffit largement pour un usage « je rafraîchis de temps en temps ».
 
-1. Créer un compte chez un fournisseur de proxys résidentiels. Plusieurs proposent
-   un **essai gratuit** ou une petite offre à quelques euros, ce qui suffit
-   largement pour un usage « quelques jours » (Decodo/Smartproxy, IPRoyal,
-   Webshare — offre *residential*, pas *datacenter*).
-2. Récupérer l'URL du proxy au format :
-   `http://identifiant:motdepasse@hote:port`
+**Mise en place (3 minutes, une seule fois) :**
+
+1. Créer un compte gratuit sur **[scrapfly.io](https://scrapfly.io)**.
+2. Dans le tableau de bord Scrapfly, copier la **clé d'API** (*API Key*).
 3. Dans Render : **Dashboard → votre service → Environment → Add Environment
-   Variable**, clé `PROXY_URL`, valeur = l'URL ci-dessus. Enregistrer (le service
-   redémarre seul).
-4. Relancer une recherche : les quatre sources doivent répondre.
+   Variable**, clé `SCRAPFLY_KEY`, valeur = la clé copiée. Enregistrer (le service
+   redémarre tout seul).
+4. Ouvrir l'outil, cliquer **Rechercher** : les quatre sources répondent.
 
-Aucune autre modification n'est nécessaire — le proxy est appliqué automatiquement
-à toutes les sources. Laisser `PROXY_URL` vide revient au comportement sans proxy
-(seule Bien'ici répond en hébergement).
+C'est tout. Bien'ici continue de passer en direct (elle ne consomme aucun crédit
+Scrapfly) ; seules les trois sources protégées utilisent Scrapfly. Vous pouvez
+suivre votre consommation sur le tableau de bord Scrapfly — un rafraîchissement
+complet coûte quelques dizaines de crédits, soit largement dans les 1000/mois pour
+une consultation occasionnelle.
+
+Laisser `SCRAPFLY_KEY` vide revient au comportement sans clé (seule Bien'ici répond
+en hébergement ; les quatre fonctionnent en local).
 
 > **Pourquoi c'est nécessaire.** Les protections anti-robot (DataDome pour
 > Leboncoin, Cloudflare pour PAP/SeLoger) classent les plages d'adresses de
 > datacenter comme « robot » avant même de lire la requête. Aucune technique de
-> scraping ne contourne ça ; seul le passage par une IP résidentielle le fait.
-> C'est pour cette raison qu'**en local, sans proxy, tout fonctionne** : votre
-> connexion personnelle est déjà une IP résidentielle.
+> scraping ne contourne ça depuis un hébergeur ; il faut passer par une IP
+> résidentielle — ce que fait Scrapfly. C'est aussi pourquoi **en local, tout
+> fonctionne sans clé** : votre connexion personnelle est déjà résidentielle.
+
+> **Alternative :** si vous disposez déjà d'un **proxy résidentiel**, vous pouvez
+> le renseigner dans la variable `PROXY_URL`
+> (`http://identifiant:motdepasse@hote:port`) au lieu de Scrapfly.
 
 ---
 
