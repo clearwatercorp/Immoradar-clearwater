@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ImmoRadar — Récupérer Leboncoin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#080f1a;color:#c8dff0;font-family:'DM Sans',sans-serif;line-height:1.6;padding:24px 16px}
+  .wrap{max-width:720px;margin:0 auto}
+  h1{font-family:'DM Serif Display',serif;color:#e0eaf5;font-size:26px;margin-bottom:6px}
+  h2{color:#7ac3f0;font-size:17px;margin:26px 0 10px}
+  .sub{color:#4a7a9a;font-size:14px;margin-bottom:8px}
+  .card{background:#0d1621;border:1px solid #1a2d40;border-radius:12px;padding:18px 20px;margin:14px 0}
+  .step{display:flex;gap:12px;margin:14px 0}
+  .num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#1a3a5a;color:#7ac3f0;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .step-body{flex:1}
+  .bm{display:inline-block;background:linear-gradient(135deg,#1a3a5a,#12233a);border:1px solid #2a6aaa;border-radius:10px;color:#7ac3f0;padding:12px 22px;font-size:16px;font-weight:800;text-decoration:none;margin:6px 0;cursor:grab}
+  .bm:hover{background:#1e4a70}
+  .btn{display:inline-block;background:#1a3a5a;border:1px solid #2a5a8a;border-radius:8px;color:#7ac3f0;padding:10px 18px;font-size:14px;font-weight:600;text-decoration:none;margin:6px 0}
+  .btn:hover{background:#1e4a70}
+  code{background:#0a1520;border:1px solid #1a2d40;border-radius:5px;padding:1px 7px;font-size:13px;color:#9ad0f0;word-break:break-all}
+  .note{background:#1a2030;border:1px solid #2a4060;border-radius:8px;padding:11px 15px;font-size:13px;color:#8ab;margin:10px 0}
+  .warn{background:#2a2016;border-color:#5a4020;color:#d0a860}
+  a.plain{color:#7ac3f0}
+  textarea{width:100%;background:#0a1520;border:1px solid #1a2d40;border-radius:8px;color:#9ad0f0;font-size:12px;padding:10px;margin-top:6px;min-height:70px;font-family:monospace}
+  .back{color:#4a7a9a;text-decoration:none;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" class="back">← Retour à ImmoRadar</a>
+  <h1 style="margin-top:14px">🔖 Récupérer Leboncoin depuis votre navigateur</h1>
+  <p class="sub">Gratuit, illimité, sans rien installer. Les annonces sont lues depuis <strong>votre</strong> session Leboncoin (votre connexion, vos cookies) — donc aucun blocage, contrairement au serveur.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">Le favori « ImmoRadar »</h2>
+    <p class="sub">C'est un simple marque-page. On ne l'installe pas : on le glisse dans la barre des favoris.</p>
+    <a class="bm" id="bm" href="#">📡 Envoyer vers ImmoRadar</a>
+    <div class="note" id="origin-note"></div>
+  </div>
+
+  <h2>Sur ordinateur (Chrome, Edge, Firefox)</h2>
+  <div class="card">
+    <div class="step"><div class="num">1</div><div class="step-body">
+      Affichez votre barre de favoris si besoin : <code>Ctrl</code> + <code>Maj</code> + <code>B</code>.
+    </div></div>
+    <div class="step"><div class="num">2</div><div class="step-body">
+      <strong>Glissez</strong> le bouton bleu <em>« 📡 Envoyer vers ImmoRadar »</em> ci-dessus dans votre barre de favoris. (Une seule fois.)
+    </div></div>
+    <div class="step"><div class="num">3</div><div class="step-body">
+      Ouvrez Leboncoin sur la zone voulue :
+      <a class="btn" id="lien-lbc" href="#" target="_blank" rel="noopener">🔍 Ouvrir Leboncoin — zone Villeneuve-Loubet</a><br/>
+      <span class="sub">Vous pouvez affiner les critères directement sur Leboncoin : le favori récupère ce qui est affiché.</span>
+    </div></div>
+    <div class="step"><div class="num">4</div><div class="step-body">
+      Sur la page de <strong>résultats</strong> Leboncoin, cliquez le favori <em>« 📡 Envoyer vers ImmoRadar »</em>. Un message confirme le nombre d'annonces envoyées.
+    </div></div>
+    <div class="step"><div class="num">5</div><div class="step-body">
+      Revenez sur <a class="plain" href="/">ImmoRadar</a> : vos annonces sont là, analysées selon les 2 stratégies.
+      <div class="sub">Pour en récupérer plus : sur Leboncoin, passez à la page suivante et recliquez le favori — les annonces s'ajoutent.</div>
+    </div></div>
+  </div>
+
+  <h2>Sur iPhone (Safari)</h2>
+  <div class="card">
+    <p class="sub">Un peu plus manuel, à faire une seule fois :</p>
+    <div class="step"><div class="num">1</div><div class="step-body">
+      Ajoutez cette page en favori (bouton Partager → <em>Ajouter un signet</em>).
+    </div></div>
+    <div class="step"><div class="num">2</div><div class="step-body">
+      Copiez le code du favori ci-dessous :
+      <textarea id="bm-code" readonly onclick="this.select()"></textarea>
+      <a class="btn" id="copy" href="#">📋 Copier le code</a>
+    </div></div>
+    <div class="step"><div class="num">3</div><div class="step-body">
+      Ouvrez vos <strong>Signets</strong>, modifiez celui que vous venez de créer, effacez son adresse et <strong>collez le code copié</strong> à la place. Renommez-le « ImmoRadar ». Enregistrez.
+    </div></div>
+    <div class="step"><div class="num">4</div><div class="step-body">
+      Allez sur une page de résultats Leboncoin, ouvrez vos Signets et touchez « ImmoRadar ». Les annonces partent vers l'app.
+    </div></div>
+  </div>
+
+  <div class="note warn">
+    ⚠️ Le favori ne fonctionne que sur une page de <strong>résultats de recherche</strong> Leboncoin (la liste d'annonces), pas sur la page d'accueil ni sur une annonce seule.
+  </div>
+</div>
+
+<script>
+// Code du favori (bookmarklet). APP_ORIGIN est remplacé par l'URL de CETTE app,
+// pour que les annonces soient envoyées au bon endroit.
+var CODE = [
+"(function(){",
+"function F(d){var a=[],s={};(function w(o){if(!o||typeof o!=='object')return;",
+"if(Array.isArray(o)){o.forEach(w);return;}",
+"if(o.list_id&&o.subject!==undefined&&o.price!==undefined&&!s[o.list_id]){s[o.list_id]=1;a.push(o);}",
+"for(var k in o){w(o[k]);}})(d);return a;}",
+"var d=null,n=document.getElementById('__NEXT_DATA__');",
+"if(n){try{d=JSON.parse(n.textContent);}catch(e){}}",
+"if(!d&&window.__NEXT_DATA__)d=window.__NEXT_DATA__;",
+"var a=d?F(d):[];",
+"if(!a.length){alert('ImmoRadar : aucune annonce sur cette page. Ouvrez une page de RESULTATS de recherche Leboncoin, puis recliquez.');return;}",
+"fetch(APP_ORIGIN+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'Leboncoin',ads:a})})",
+".then(function(r){return r.json();})",
+".then(function(j){alert('ImmoRadar : '+j.retenues+' annonce(s) de la zone importee(s), '+j.nouvelles+' nouvelle(s). Ouvrez ImmoRadar pour les analyser.');})",
+".catch(function(e){alert('ImmoRadar : erreur envoi ('+e.message+').');});",
+"})();"
+].join("");
+
+var code = CODE.replace("APP_ORIGIN", JSON.stringify(location.origin));
+var href = "javascript:" + code;
+document.getElementById("bm").setAttribute("href", href);
+document.getElementById("bm-code").value = href;
+document.getElementById("origin-note").textContent = "Ce favori enverra les annonces vers : " + location.origin;
+
+// Lien Leboncoin pré-rempli (vente maison+appartement, ~10 km Villeneuve-Loubet).
+// Vous pouvez ensuite ajuster prix/surface directement sur Leboncoin.
+var lbc = "https://www.leboncoin.fr/recherche?category=9&real_estate_type=1%2C2"
+        + "&locations=Villeneuve-Loubet_06270__43.6486_7.1246_10000_10000";
+document.getElementById("lien-lbc").setAttribute("href", lbc);
+
+document.getElementById("copy").addEventListener("click", function(e){
+  e.preventDefault();
+  var t = document.getElementById("bm-code"); t.select();
+  try{ navigator.clipboard.writeText(t.value); }catch(_){ document.execCommand("copy"); }
+  this.textContent = "✓ Copié";
+});
+document.getElementById("bm").addEventListener("click", function(e){ e.preventDefault(); });
+</script>
+</body>
+</html>

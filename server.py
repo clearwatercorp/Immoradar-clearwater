@@ -1,7 +1,7 @@
 import time
 import threading
 
-from flask import Flask, jsonify, send_file
+from flask import Flask, jsonify, send_file, request
 
 import config
 import storage
@@ -95,6 +95,11 @@ def index():
     return send_file("index.html")
 
 
+@app.route("/bookmarklet")
+def bookmarklet():
+    return send_file("bookmarklet.html")
+
+
 @app.route("/api/annonces")
 def api_annonces():
     now = time.time()
@@ -112,6 +117,48 @@ def api_annonces():
         "nouvelles":   _status["nouvelles"],
         "annonces":    ads,
     })
+
+
+@app.route("/api/import", methods=["POST", "OPTIONS"])
+def api_import():
+    """Reçoit des annonces brutes envoyées par le bookmarklet depuis la
+    session Leboncoin de l'utilisateur (son navigateur, son IP résidentielle,
+    ses cookies — donc aucun blocage anti-robot). Appel cross-origin depuis
+    leboncoin.fr, d'où les en-têtes CORS."""
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        payload = {}
+    brutes = payload.get("ads") or []
+
+    from scrapers.leboncoin import _parse_api_ad
+    normalisees = [p for a in brutes if (p := _parse_api_ad(a))]
+    kept = [a for a in normalisees if passes_filters(a)]
+    new_ids = storage.upsert_ads(kept)
+
+    _status["ts"] = time.time()
+    _status["sources"] = dict(_status.get("sources") or {}, **{
+        "Leboncoin": {"ok": True, "trouvees": len(brutes), "retenues": len(kept),
+                      "detail": "importé depuis votre navigateur (bookmarklet)"}
+    })
+    print(f"[import] {len(brutes)} reçues → {len(kept)} retenues, {len(new_ids)} nouvelles")
+    return _cors(jsonify({
+        "ok": True,
+        "recues": len(brutes),
+        "retenues": len(kept),
+        "nouvelles": len(new_ids),
+        "count": len(storage.get_all_ads()),
+    }))
+
+
+def _cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
 
 
 @app.route("/api/refresh", methods=["POST"])
