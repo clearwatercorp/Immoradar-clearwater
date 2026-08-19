@@ -323,8 +323,12 @@ async function loadAnnonces(){
       return `<span style="color:${couleur}" title="${esc(s.detail||'')}">${icone} ${esc(name)} : 0${raison}</span>`;
     }).join(" · ");
     const age = json.age_min!=null ? `Données de ${json.age_min} min` : "Aucune recherche effectuée";
+    const modeTag = meta.scrapfly_actif
+      ? `<span style="color:#7ac3f0" title="Chaque recherche consomme quelques crédits de votre quota Scrapfly gratuit">🛡️ Scrapfly actif</span> · `
+      : "";
     document.getElementById("sources-info").innerHTML =
       (enCours ? `<span class="spinner">⟳</span> <span>Recherche en cours…</span> · ` : "") +
+      modeTag +
       `<span>${allAnnonces.length} annonces</span> · ${age}<br/>${srcHtml||"aucune source"}`;
 
     // Détecte le cas typique de l'hébergement : plusieurs sources bloquées
