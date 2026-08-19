@@ -25,6 +25,15 @@ SEARCH_URL = "https://www.pap.fr/recherche"
 
 _geo_ids_cache = {"ids": None}
 
+# Chaque résolution de commune = 1 requête Scrapfly (l'autocomplete de PAP est
+# derrière Cloudflare). Pour économiser les crédits, on ne résout que les
+# communes les plus centrales de la zone ; le filtre distance côté serveur
+# écarte de toute façon ce qui dépasse le rayon. Ces identifiants étant
+# stables, ils sont ensuite mis en cache pour toute la durée de vie du serveur.
+COMMUNES_PAP = [c for c in COMMUNES if c["nom"] in (
+    "Villeneuve-Loubet", "Antibes", "Cagnes-sur-Mer", "Biot",
+)] or COMMUNES
+
 
 def _resolve_geo_ids(force=False):
     if _geo_ids_cache["ids"] is not None and not force:
@@ -33,7 +42,7 @@ def _resolve_geo_ids(force=False):
     session = get_cloudscraper_session()
     ids = []
     derniere_erreur = {"msg": None, "bloque": False}
-    for commune in COMMUNES:
+    for commune in COMMUNES_PAP:
         try:
             r = fetch.get(AC_GEO_URL.format(q=quote(commune["nom"])), session=session)
             if r.status_code != 200:

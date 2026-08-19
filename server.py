@@ -67,20 +67,11 @@ def refresh_cache():
     return True
 
 
-def auto_refresh():
-    print("[thread] Démarré")
-    while True:
-        try:
-            refresh_cache()
-        except Exception as e:
-            print(f"[thread] erreur: {e}")
-        time.sleep(config.CACHE_TTL)
-
-
-print("[module] Lancement thread scraping...")
-_t = threading.Thread(target=auto_refresh, daemon=True)
-_t.start()
-print("[module] Thread lancé.")
+# Pas de rafraîchissement automatique : le scraping consomme des crédits
+# (Scrapfly) et l'usage voulu est strictement « à la demande ». On ne scrape
+# donc QUE sur clic « Rechercher » (route /api/refresh). Le serveur ne scrape
+# rien au démarrage ni en tâche de fond.
+print("[module] Scraping à la demande uniquement (pas de rafraîchissement auto).")
 
 
 def enrich(ad):

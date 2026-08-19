@@ -254,7 +254,7 @@ function renderLegend(){
     <strong>Coût travaux estimé (€/m²) :</strong> bon état ${meta.travaux_cost_m2.bon_etat} · à rafraîchir ${meta.travaux_cost_m2.a_rafraichir}
       · à rénover ${meta.travaux_cost_m2.a_renover} · gros travaux ${meta.travaux_cost_m2.gros_travaux}<br/>
     <span style="color:#8a6a3a">⚠️ Estimations heuristiques v1 (mots-clés + références de marché approximatives) — seront affinées avec un modèle
-    entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — bouton « Rechercher » pour interroger les sites à la demande (recherche auto toutes les ${meta.refresh_min} min tant que le serveur tourne).</span><br/>
+    entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — la recherche se lance <strong>uniquement</strong> quand vous cliquez « Rechercher » (aucun scan automatique, pour ne pas consommer inutilement).</span><br/>
     <span class="new-dot"></span> = annonce détectée pour la première fois il y a moins de 24h
   `;
 }

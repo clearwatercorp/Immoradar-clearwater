@@ -15,7 +15,6 @@ explicitement, et les trois autres sources continuent de tourner.
 import codecs
 import json
 import re
-from urllib.parse import quote
 
 from config import PRICE_MAX_HARD_CAP
 from zones import COMMUNES
@@ -25,49 +24,14 @@ from . import diag, fetch
 SOURCE = "SeLoger"
 
 BASE_URL = "https://www.seloger.com"
-AUTOCOMPLETE_URL = "https://autocomplete.svc.groupe-seloger.com/auto/complete/0/Ville/6?text={q}"
-
 PROJECT_VENTE = 2
 TYPES_APART_MAISON = "1,2"  # 1=appartement, 2=maison
 
-_city_ids_cache = {"ids": None}
-
-
-def _resolve_city_ids(force=False):
-    """Résout les identifiants de commune via l'autocomplete de SeLoger
-    (champ Params.ci), comme le fait woob — plus fiable que de coder en
-    dur des codes INSEE. Repli sur les codes INSEE de zones.py si
-    l'autocomplete est inaccessible."""
-    if _city_ids_cache["ids"] is not None and not force:
-        return _city_ids_cache["ids"]
-
-    session = get_session()
-    ids = []
-    for commune in COMMUNES:
-        try:
-            r = fetch.get(
-                AUTOCOMPLETE_URL.format(q=quote(commune["nom"])),
-                headers={"accept": "application/json"},
-                session=session,
-            )
-            if r.status_code != 200:
-                continue
-            data = r.json()
-            items = data if isinstance(data, list) else (data.get("Items") or data.get("items") or [])
-            for item in items:
-                ci = (item.get("Params") or item.get("params") or {}).get("ci")
-                if ci:
-                    ids.append(str(ci))
-                    break
-        except Exception as e:
-            print(f"[seloger] erreur résolution commune {commune['nom']}: {e}")
-
-    if not ids:
-        ids = [c["insee"].lstrip("0") or "0" for c in COMMUNES]
-        print("[seloger] autocomplete indisponible — repli sur les codes INSEE de zones.py")
-
-    _city_ids_cache["ids"] = ids
-    return ids
+def _city_ids():
+    """Codes INSEE des communes de la zone, en dur (zones.py). On n'appelle
+    plus l'autocomplete de SeLoger : c'était 10 requêtes Scrapfly par scan
+    (coûteux) pour un résultat identique, ces codes étant stables."""
+    return [c["insee"].lstrip("0") or "0" for c in COMMUNES]
 
 
 def _build_url(city_ids):
@@ -83,7 +47,7 @@ def _build_url(city_ids):
 def search():
     diag.clear(SOURCE)
     try:
-        r = fetch.get(_build_url(_resolve_city_ids()), session=get_session(), render_js=True)
+        r = fetch.get(_build_url(_city_ids()), session=get_session())
         print(f"[seloger] HTTP {r.status_code}")
         if r.status_code != 200:
             if r.status_code in (403, 429):
