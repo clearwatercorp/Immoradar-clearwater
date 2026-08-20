@@ -48,6 +48,12 @@ def init_db():
         conn.commit()
 
 
+def clear_all():
+    with closing(get_conn()) as conn:
+        conn.execute("DELETE FROM annonces")
+        conn.commit()
+
+
 def set_note(ad_id, statut, texte):
     with closing(get_conn()) as conn:
         cur = conn.execute(

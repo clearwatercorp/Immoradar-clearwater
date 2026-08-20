@@ -185,6 +185,16 @@ def _cors(resp):
     return resp
 
 
+@app.route("/api/clear", methods=["POST"])
+def api_clear():
+    """Efface toutes les annonces (pour repartir sur de nouveaux critères)."""
+    storage.clear_all()
+    _status["ts"] = 0
+    _status["sources"] = {}
+    _status["nouvelles"] = 0
+    return jsonify({"ok": True})
+
+
 @app.route("/api/note", methods=["POST"])
 def api_note():
     """Enregistre le suivi d'une annonce (statut + note libre). Persisté en

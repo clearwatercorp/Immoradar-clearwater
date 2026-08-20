@@ -92,6 +92,7 @@ def evaluate(ad):
         "bail_commercial": bail,
         "loyer_source": loyer_source,
         "charges_mensuelles": ad.get("charges_mensuelles"),
+        "charges_non_recup": charges,
         "loyer_classique_mensuel": loyer_classique_mensuel,
         "rendement_locatif_brut_pct": rendement_locatif_brut,
         "mensualite_credit": mensualite,

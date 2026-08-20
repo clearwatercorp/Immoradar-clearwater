@@ -150,6 +150,7 @@
     </div>
     <input class="search-input" id="search-input" placeholder="Ville, titre…"/>
     <a class="btn-refresh" href="/bookmarklet" style="text-decoration:none" title="Récupérer Leboncoin gratuitement depuis votre navigateur">🔖 Leboncoin</a>
+    <button class="btn-refresh" id="btn-clear" title="Effacer toutes les annonces pour repartir sur de nouveaux critères" style="background:#2a1616;border-color:#5a2a2a;color:#ff9a9a">🗑️ Vider</button>
     <button class="btn-refresh" id="btn-refresh">⟳ Rechercher</button>
   </div>
 </div>
@@ -488,9 +489,10 @@ function getFiltered(){
 }
 
 // ─── RENDU ────────────────────────────────────────────────────────────────────
-function statPill(label,value,tone){
-  return `<div class="stat-pill${tone?" "+tone:""}">
-    <div class="stat-pill-label">${label}</div>
+function statPill(label,value,tone,title){
+  const attr = title ? ` title="${esc(title)}" style="cursor:help"` : "";
+  return `<div class="stat-pill${tone?" "+tone:""}"${attr}>
+    <div class="stat-pill-label">${label}${title?" ⓘ":""}</div>
     <div class="stat-pill-val">${value}</div>
   </div>`;
 }
@@ -544,6 +546,20 @@ function noteBlock(a){
     </div>`;
 }
 
+// Décomposition du cash-flow pour le tooltip (survol de la pastille).
+function cfTipLoc(l){
+  const parts = [`Revenu ${fmtEuro(l.revenu_mensuel_moyen)}/mois`,
+                 `− mensualité crédit ${fmtEuro(l.mensualite_credit)}`];
+  if(l.charges_non_recup) parts.push(`− charges non récup. ${fmtEuro(l.charges_non_recup)}`);
+  return parts.join("  ") + `  =  ${fmtSigned(l.cashflow_mensuel_moyen)}/mois`;
+}
+function cfTipMarchand(m){
+  const parts = [`Loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois`,
+                 `− mensualité crédit ${fmtEuro(m.mensualite_credit)}`];
+  if(m.charges_non_recup) parts.push(`− charges non récup. ${fmtEuro(m.charges_non_recup)}`);
+  return parts.join("  ") + `  =  ${fmtSigned(m.cashflow_locatif_mensuel)}/mois`;
+}
+
 function renderCardLoc(a){
   const exp = expandedId===a.id;
   const l = a.loc;
@@ -571,14 +587,14 @@ function renderCardLoc(a){
     ${l && l.eligibilite==="bail_commercial"?`
     <div class="stats-row">
       ${statPill("Rendement brut", l.rendement_brut_pct?l.rendement_brut_pct+"%":"?", "bad")}
-      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad")}
+      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad", cfTipLoc(l))}
       ${statPill("Loyer exploitant", l.revenu_mensuel_moyen?fmtEuro(l.revenu_mensuel_moyen)+"/mois":"non précisé", "bad")}
       ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
     </div>`
     : l?`
     <div class="stats-row">
       ${statPill("Rendement brut", l.rendement_brut_pct+"%", l.rendement_brut_pct>=7?"good":"")}
-      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad")}
+      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad", cfTipLoc(l))}
       ${statPill("Loyer étudiant", fmtEuro(l.loyer_etudiant_mensuel)+"/mois", false)}
       ${statPill("Airbnb été", fmtEuro(l.airbnb_revenu_mensuel_ete)+"/mois", false)}
       ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
@@ -651,7 +667,8 @@ function renderCardMarchand(a){
         Investissement total : <strong>${fmtEuro(m.investissement_total)}</strong> (notaire ${fmtEuro(m.frais_notaire)} + travaux ${fmtEuro(m.cout_travaux)}).
         État détecté : <strong>${esc(m.condition.label)}</strong> (${esc(m.condition.confiance)}).<br/>
         Rendement locatif : loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois
-        <em>(${esc(m.loyer_source||"")})</em>, cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois.<br/>
+        <em>(${esc(m.loyer_source||"")})</em>,
+        <span title="${esc(cfTipMarchand(m))}" style="cursor:help;border-bottom:1px dotted #5a7a9a">cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois ⓘ</span>.<br/>
         Division : ${esc(m.divisibilite.note)}
       </div>
       ${m.bail_commercial && m.bail_commercial.sous_bail_commercial?`
@@ -763,6 +780,18 @@ document.getElementById("annonces-list").addEventListener("input", e=>{
 });
 document.getElementById("search-input").addEventListener("input", renderAll);
 document.getElementById("btn-refresh").addEventListener("click", lancerRecherche);
+
+document.getElementById("btn-clear").addEventListener("click", async ()=>{
+  const n = allAnnonces.length;
+  if(!confirm(`Effacer les ${n} annonce(s) et repartir de zéro ?\n(Vos notes seront également supprimées.)`)) return;
+  try{
+    await fetch("/api/clear", {method:"POST"});
+    allAnnonces = [];
+    expandedId = null;
+    document.getElementById("sources-info").style.display="none";
+    renderAll();
+  }catch(e){ alert("Erreur lors de l'effacement : "+e.message); }
+});
 
 document.querySelectorAll(".view-toggle button").forEach(btn=>{
   btn.addEventListener("click", ()=>{

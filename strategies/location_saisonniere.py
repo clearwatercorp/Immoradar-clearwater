@@ -62,6 +62,7 @@ def evaluate(ad):
             "revenu_mensuel_moyen": revenu_mensuel_moyen,
             "rendement_brut_pct": rendement_brut,
             "charges_mensuelles": ad.get("charges_mensuelles"),
+            "charges_non_recup": charges,
             "cashflow_mensuel_moyen": revenu_mensuel_moyen - acquisition["mensualite_credit"] - charges,
         }
 
@@ -99,5 +100,6 @@ def evaluate(ad):
         "revenu_mensuel_moyen": revenu_mensuel_moyen,
         "rendement_brut_pct": rendement_brut,
         "charges_mensuelles": ad.get("charges_mensuelles"),
+        "charges_non_recup": charges,
         "cashflow_mensuel_moyen": cashflow_mensuel,
     }
