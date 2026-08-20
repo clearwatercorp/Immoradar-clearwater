@@ -135,13 +135,13 @@ def api_import():
     brutes = payload.get("ads") or []
 
     from scrapers.leboncoin import _parse_api_ad
-    from scrapers.common import filter_reason
+    from scrapers.common import annotate_import
 
     normalisees = [p for a in brutes if (p := _parse_api_ad(a))]
     kept, rejets, villes = [], {}, set()
     for a in normalisees:
         villes.add(a.get("ville") or "?")
-        raison = filter_reason(a)
+        raison = annotate_import(a)   # souple : la zone est celle choisie sur Leboncoin
         if raison is None:
             kept.append(a)
         else:

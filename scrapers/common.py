@@ -62,3 +62,23 @@ def passes_filters(ad):
     """Filtre une annonce de vente normalisée : dans la zone (précisément
     ou via la commune reconnue), prix et surface exploitables."""
     return filter_reason(ad) is None
+
+
+def annotate_import(ad):
+    """Filtrage SOUPLE pour l'import manuel via le bookmarklet : c'est
+    l'utilisateur qui a défini la zone (et le budget) dans sa recherche
+    Leboncoin, donc le serveur ne re-filtre PAS par distance ni par prix. Il
+    garde tout bien exploitable (prix et surface renseignés) et calcule la
+    distance seulement pour l'affichage. Retourne None si gardé (annoté),
+    sinon un motif : 'sans_prix' / 'sans_surface'."""
+    prix = ad.get("prix") or 0
+    if prix <= 0:
+        return "sans_prix"
+    surface = ad.get("surface") or 0
+    if surface <= 0:
+        return "sans_surface"
+    dist, precise = resolve_distance(ad)
+    if dist is not None:
+        ad["distance_km"] = round(dist, 1)
+        ad["distance_precise"] = precise
+    return None
