@@ -103,7 +103,14 @@ var CODE = [
 "if(!a.length){alert('ImmoRadar : aucune annonce sur cette page. Ouvrez une page de RESULTATS de recherche Leboncoin, puis recliquez.');return;}",
 "fetch(APP_ORIGIN+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'Leboncoin',ads:a})})",
 ".then(function(r){return r.json();})",
-".then(function(j){alert('ImmoRadar : '+j.retenues+' annonce(s) de la zone importee(s), '+j.nouvelles+' nouvelle(s). Ouvrez ImmoRadar pour les analyser.');})",
+".then(function(j){",
+"var m='ImmoRadar : '+j.retenues+' annonce(s) de la zone retenue(s) sur '+j.recues+' lue(s)';",
+"if(j.retenues>0){m+=' ('+j.nouvelles+' nouvelle(s)). Ouvrez ImmoRadar pour les analyser.';}",
+"else{var r=j.rejets||{};var d=[];if(r.hors_zone)d.push(r.hors_zone+' hors des 10 km');if(r.sans_coords)d.push(r.sans_coords+' sans localisation');if(r.prix)d.push(r.prix+' hors budget');if(r.sans_surface)d.push(r.sans_surface+' sans surface');",
+"m+='.\\n\\nDetail : '+(d.join(', ')||'aucune annonce lue')+'.';",
+"if((j.villes||[]).length)m+='\\nVilles vues : '+j.villes.join(', ')+'.';",
+"m+='\\n\\nAffinez votre recherche Leboncoin sur la zone (ville + rayon 10 km) puis recliquez.';}",
+"alert(m);})",
 ".catch(function(e){alert('ImmoRadar : erreur envoi ('+e.message+').');});",
 "})();"
 ].join("");

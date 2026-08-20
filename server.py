@@ -135,8 +135,17 @@ def api_import():
     brutes = payload.get("ads") or []
 
     from scrapers.leboncoin import _parse_api_ad
+    from scrapers.common import filter_reason
+
     normalisees = [p for a in brutes if (p := _parse_api_ad(a))]
-    kept = [a for a in normalisees if passes_filters(a)]
+    kept, rejets, villes = [], {}, set()
+    for a in normalisees:
+        villes.add(a.get("ville") or "?")
+        raison = filter_reason(a)
+        if raison is None:
+            kept.append(a)
+        else:
+            rejets[raison] = rejets.get(raison, 0) + 1
     new_ids = storage.upsert_ads(kept)
 
     _status["ts"] = time.time()
@@ -144,12 +153,16 @@ def api_import():
         "Leboncoin": {"ok": True, "trouvees": len(brutes), "retenues": len(kept),
                       "detail": "importé depuis votre navigateur (bookmarklet)"}
     })
-    print(f"[import] {len(brutes)} reçues → {len(kept)} retenues, {len(new_ids)} nouvelles")
+    print(f"[import] {len(brutes)} reçues, {len(normalisees)} lues → {len(kept)} retenues, "
+          f"{len(new_ids)} nouvelles, rejets={rejets}")
     return _cors(jsonify({
         "ok": True,
         "recues": len(brutes),
+        "lues": len(normalisees),
         "retenues": len(kept),
         "nouvelles": len(new_ids),
+        "rejets": rejets,               # {'hors_zone': 30, 'sans_coords': 5, …}
+        "villes": sorted(villes)[:8],   # échantillon de villes reçues
         "count": len(storage.get_all_ads()),
     }))
 

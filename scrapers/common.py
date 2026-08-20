@@ -39,18 +39,26 @@ def resolve_distance(ad):
     return None, False
 
 
+def filter_reason(ad):
+    """Retourne None si l'annonce passe (et l'annote), sinon un code de rejet :
+    'sans_coords' / 'hors_zone' / 'prix' / 'sans_surface'. Sert au diagnostic."""
+    dist, precise = resolve_distance(ad)
+    if dist is None:
+        return "sans_coords"
+    if dist > RADIUS_KM:
+        return "hors_zone"
+    prix = ad.get("prix") or 0
+    if prix <= PRICE_MIN or prix > PRICE_MAX_HARD_CAP:
+        return "prix"
+    surface = ad.get("surface") or 0
+    if surface <= 0:
+        return "sans_surface"
+    ad["distance_km"] = round(dist, 1)
+    ad["distance_precise"] = precise
+    return None
+
+
 def passes_filters(ad):
     """Filtre une annonce de vente normalisée : dans la zone (précisément
     ou via la commune reconnue), prix et surface exploitables."""
-    dist, precise = resolve_distance(ad)
-    if dist is None or dist > RADIUS_KM:
-        return False
-    prix = ad.get("prix") or 0
-    if prix <= PRICE_MIN or prix > PRICE_MAX_HARD_CAP:
-        return False
-    surface = ad.get("surface") or 0
-    if surface <= 0:
-        return False
-    ad["distance_km"] = round(dist, 1)
-    ad["distance_precise"] = precise
-    return True
+    return filter_reason(ad) is None
