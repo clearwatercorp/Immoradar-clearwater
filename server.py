@@ -155,16 +155,27 @@ def api_import():
     })
     print(f"[import] {len(brutes)} reçues, {len(normalisees)} lues → {len(kept)} retenues, "
           f"{len(new_ids)} nouvelles, rejets={rejets}")
-    return _cors(jsonify({
+    reponse = {
         "ok": True,
         "recues": len(brutes),
         "lues": len(normalisees),
         "retenues": len(kept),
         "nouvelles": len(new_ids),
-        "rejets": rejets,               # {'hors_zone': 30, 'sans_coords': 5, …}
+        "rejets": rejets,               # {'sans_surface': 30, …}
         "villes": sorted(villes)[:8],   # échantillon de villes reçues
         "count": len(storage.get_all_ads()),
-    }))
+    }
+    # Diagnostic : si rien n'est retenu, on renvoie les clés d'une annonce
+    # brute pour repérer où sont réellement surface/ville dans ce format.
+    if not kept and brutes:
+        ex = brutes[0]
+        reponse["debug"] = {
+            "cles": sorted(ex.keys())[:40],
+            "location_cles": sorted((ex.get("location") or {}).keys())[:20] if isinstance(ex.get("location"), dict) else None,
+            "a_attributes": bool(ex.get("attributes")),
+            "titre": (ex.get("subject") or ex.get("title") or "")[:80],
+        }
+    return _cors(reponse and jsonify(reponse))
 
 
 def _cors(resp):

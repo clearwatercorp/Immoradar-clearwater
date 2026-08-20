@@ -109,6 +109,7 @@ var CODE = [
 "else{var r=j.rejets||{};var d=[];if(r.sans_surface)d.push(r.sans_surface+' sans surface');if(r.sans_prix)d.push(r.sans_prix+' sans prix');",
 "m+='.\\n\\n'+(d.length?('Ecartees : '+d.join(', ')+'.'):'Aucune annonce lue sur cette page.');",
 "if((j.villes||[]).length)m+='\\nVilles vues : '+j.villes.join(', ')+'.';",
+"if(j.debug){m+='\\n\\n[diag] champs: '+(j.debug.cles||[]).join(',')+'\\n[diag] location: '+((j.debug.location_cles||[]).join(',')||'aucune')+'\\n[diag] titre: '+(j.debug.titre||'');}",
 "m+='\\n\\nEtes-vous bien sur une page de RESULTATS Leboncoin ?';}",
 "alert(m);})",
 ".catch(function(e){alert('ImmoRadar : erreur envoi ('+e.message+').');});",

@@ -267,48 +267,108 @@ def _search_interne(max_essais=4):
     return []
 
 
-def _parse_api_ad(ad):
+import re as _re
+
+
+def _to_int(v):
     try:
-        prix_list = ad.get("price") or [0]
-        prix = prix_list[0] if isinstance(prix_list, list) else prix_list
+        return int(float(str(v).replace(",", ".")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_api_ad(ad):
+    """Normalise une annonce Leboncoin. Défensif : le format des annonces
+    embarquées dans les pages (__NEXT_DATA__) varie et n'a pas toujours le
+    même schéma que l'API mobile. On cherche donc chaque donnée à plusieurs
+    endroits, avec repli sur une extraction depuis le titre."""
+    try:
+        # Prix : liste [n] ou nombre, ou champ price_cents.
+        prix = 0
+        pr = ad.get("price")
+        if isinstance(pr, list) and pr:
+            prix = _to_int(pr[0])
+        elif isinstance(pr, (int, float, str)):
+            prix = _to_int(pr)
+        if not prix and ad.get("price_cents"):
+            prix = _to_int(ad["price_cents"]) // 100
+
         loc = ad.get("location", {}) or {}
-        attrs = {a["key"]: a.get("value_label", a.get("value", "")) for a in ad.get("attributes", [])}
 
-        try:
-            surface = int(float(attrs.get("square", 0)))
-        except (TypeError, ValueError):
-            surface = 0
-        try:
-            pieces = int(attrs.get("rooms")) if attrs.get("rooms") else None
-        except (TypeError, ValueError):
-            pieces = None
+        # Attributs : liste [{key,value,value_label}] → dict par clé (souvent
+        # absents dans les pages de liste, d'où les replis ci-dessous).
+        attrs = {}
+        for a in (ad.get("attributes") or []):
+            if isinstance(a, dict) and a.get("key"):
+                attrs[a["key"]] = a.get("value_label") or a.get("value") or ""
 
-        dpe_raw = (attrs.get("energy_rate") or "").strip()
+        titre = ad.get("subject") or ad.get("title") or ""
+        desc = ad.get("body") or ad.get("description") or ""
+        texte = f"{titre} {desc}"
+
+        # Surface : attribut square/surface, sinon champ direct, sinon titre (« 45 m² »).
+        surface = _to_int(attrs.get("square") or attrs.get("surface") or ad.get("square") or ad.get("surface"))
+        if not surface:
+            m = _re.search(r"(\d{2,4})\s*m(?:²|2|²)", texte, _re.I)
+            if m:
+                surface = _to_int(m.group(1))
+
+        # Pièces : attribut rooms, sinon titre (« T3 », « 3 pièces »).
+        pieces = _to_int(attrs.get("rooms") or ad.get("rooms")) or None
+        if not pieces:
+            m = _re.search(r"\b[TFtf]\s?([1-9])\b|\b([1-9])\s*pi[eè]ces?\b", texte)
+            if m:
+                pieces = _to_int(m.group(1) or m.group(2)) or None
+
+        dpe_raw = (attrs.get("energy_rate") or ad.get("energy_rate") or "").strip()
         dpe = dpe_raw[0].upper() if dpe_raw and dpe_raw[0].isalpha() else None
+
+        # Type de bien : attribut, sinon déduit du titre.
+        type_bien = (attrs.get("real_estate_type") or "").lower()
+        if type_bien in ("1", "maison"):
+            type_bien = "maison"
+        elif type_bien in ("2", "appartement"):
+            type_bien = "appartement"
+        elif not type_bien:
+            low = texte.lower()
+            if "maison" in low or "villa" in low:
+                type_bien = "maison"
+            elif "appartement" in low or _re.search(r"\b[TFtf]\s?[1-9]\b", texte):
+                type_bien = "appartement"
+
+        # Ville / CP : plusieurs schémas possibles.
+        ville = (loc.get("city_label") or loc.get("city") or loc.get("city_name")
+                 or ad.get("city_label") or ad.get("city") or "")
+        cp = str(loc.get("zipcode") or loc.get("zip_code") or ad.get("zipcode") or "")
+        lat = loc.get("lat") if loc.get("lat") is not None else ad.get("lat")
+        lon = (loc.get("lng") if loc.get("lng") is not None
+               else loc.get("lon") if loc.get("lon") is not None else ad.get("lng"))
 
         images = ad.get("images") or {}
         image = ""
         if isinstance(images, dict):
-            image = images.get("thumb_url") or (images.get("urls") or [""])[0]
+            image = images.get("thumb_url") or (images.get("urls") or [""])[0] if images.get("urls") else images.get("thumb_url", "")
         elif isinstance(images, list) and images:
-            image = images[0]
+            image = images[0] if isinstance(images[0], str) else (images[0].get("url", "") if isinstance(images[0], dict) else "")
+
+        list_id = ad.get("list_id") or ad.get("id")
 
         return {
-            "id":        f"lbc-{ad.get('list_id')}",
+            "id":        f"lbc-{list_id}",
             "source":    SOURCE,
-            "titre":     ad.get("subject", ""),
-            "desc":      ad.get("body", ""),
-            "prix":      int(prix or 0),
-            "ville":     loc.get("city_label") or loc.get("city", ""),
-            "cp":        loc.get("zipcode", ""),
+            "titre":     titre,
+            "desc":      desc,
+            "prix":      prix,
+            "ville":     ville,
+            "cp":        cp,
             "surface":   surface,
             "pieces":    pieces,
-            "type_bien": (attrs.get("real_estate_type") or "").lower(),
+            "type_bien": type_bien,
             "dpe":       dpe,
-            "lat":       loc.get("lat"),
-            "lon":       loc.get("lng"),
-            "date":      ad.get("first_publication_date", ""),
-            "link":      ad.get("url", f"https://www.leboncoin.fr/ventes_immobilieres/{ad.get('list_id')}.htm"),
+            "lat":       lat,
+            "lon":       lon,
+            "date":      ad.get("first_publication_date") or ad.get("index_date") or "",
+            "link":      ad.get("url") or f"https://www.leboncoin.fr/ventes_immobilieres/{list_id}.htm",
             "image":     image,
         }
     except Exception as e:
