@@ -5,7 +5,7 @@ Villeneuve-Loubet où la demande étudiante et touristique coexistent.
 
 from config import (
     LEASE_ETUDIANT_MOIS, AIRBNB_MOIS, TAUX_OCCUPATION_AIRBNB,
-    LOCATION_SAISONNIERE_SURFACE_MAX,
+    LOCATION_SAISONNIERE_SURFACE_MAX, CHARGES_NON_RECUP_PCT,
 )
 from references import get_reference, loyer_mensuel_estime, airbnb_nuit_estimee
 from analysis.condition import estimate_condition
@@ -13,6 +13,13 @@ from analysis.bail_commercial import detect as detect_bail_commercial
 from strategies.common import cout_acquisition
 
 MULTIPLICATEUR_LOYER_ETUDIANT = 1.08  # meublé bail court vs. nu classique
+
+
+def charges_non_recup(ad):
+    """Charges de copropriété non récupérables sur le locataire (déduites du
+    cash-flow), ou 0 si l'annonce ne les indique pas."""
+    c = ad.get("charges_mensuelles")
+    return round((c or 0) * CHARGES_NON_RECUP_PCT)
 
 
 def evaluate(ad):
@@ -27,6 +34,7 @@ def evaluate(ad):
     investissement = acquisition["investissement_total"]
 
     bail = detect_bail_commercial(ad.get("titre", ""), ad.get("desc", ""), prix)
+    charges = charges_non_recup(ad)
 
     # Bien sous bail commercial (résidence de tourisme/étudiante/services) :
     # l'exploitant détient le bail, la stratégie bail étudiant + Airbnb est
@@ -53,7 +61,8 @@ def evaluate(ad):
             "revenu_annuel_estime": revenu_annuel,
             "revenu_mensuel_moyen": revenu_mensuel_moyen,
             "rendement_brut_pct": rendement_brut,
-            "cashflow_mensuel_moyen": revenu_mensuel_moyen - acquisition["mensualite_credit"],
+            "charges_mensuelles": ad.get("charges_mensuelles"),
+            "cashflow_mensuel_moyen": revenu_mensuel_moyen - acquisition["mensualite_credit"] - charges,
         }
 
     ref = get_reference(ville)
@@ -65,7 +74,7 @@ def evaluate(ad):
     revenu_mensuel_moyen = round(revenu_annuel / 12)
 
     rendement_brut = round(revenu_annuel / investissement * 100, 1) if investissement > 0 else 0
-    cashflow_mensuel = revenu_mensuel_moyen - acquisition["mensualite_credit"]
+    cashflow_mensuel = revenu_mensuel_moyen - acquisition["mensualite_credit"] - charges
 
     if surface and surface <= LOCATION_SAISONNIERE_SURFACE_MAX and (not pieces or pieces <= 2):
         eligibilite = "bonne"
@@ -89,5 +98,6 @@ def evaluate(ad):
         "revenu_annuel_estime": revenu_annuel,
         "revenu_mensuel_moyen": revenu_mensuel_moyen,
         "rendement_brut_pct": rendement_brut,
+        "charges_mensuelles": ad.get("charges_mensuelles"),
         "cashflow_mensuel_moyen": cashflow_mensuel,
     }

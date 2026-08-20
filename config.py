@@ -66,3 +66,7 @@ LOCATION_SAISONNIERE_SURFACE_MAX = int(os.environ.get("LOCATION_SAISONNIERE_SURF
 CREDIT_TAUX_ANNUEL = float(os.environ.get("CREDIT_TAUX_ANNUEL", 0.037))
 CREDIT_APPORT_PCT  = float(os.environ.get("CREDIT_APPORT_PCT", 0.15))
 CREDIT_DUREE_ANS   = int(os.environ.get("CREDIT_DUREE_ANS", 20))
+
+# Part des charges de copropriété non récupérable sur le locataire (le reste
+# lui est refacturé). Déduite du cash-flow quand l'annonce indique les charges.
+CHARGES_NON_RECUP_PCT = float(os.environ.get("CHARGES_NON_RECUP_PCT", 0.5))

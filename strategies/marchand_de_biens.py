@@ -56,9 +56,11 @@ def evaluate(ad):
         loyer_classique_mensuel = round(loyer_mensuel_estime(surface, ref))
         loyer_source = "estimation marché local"
 
+    from config import CHARGES_NON_RECUP_PCT
+    charges = round((ad.get("charges_mensuelles") or 0) * CHARGES_NON_RECUP_PCT)
     rendement_locatif_brut = round(loyer_classique_mensuel * 12 / investissement * 100, 1) if investissement > 0 else 0
     mensualite = acquisition["mensualite_credit"]
-    cashflow_locatif_mensuel = loyer_classique_mensuel - mensualite
+    cashflow_locatif_mensuel = loyer_classique_mensuel - mensualite - charges
 
     marge_pct = scenario_actuel["marge_pct"]
     marge_apres_nego10 = scenarios_negociation[1]["marge_pct"]
@@ -89,6 +91,7 @@ def evaluate(ad):
         "divisibilite": divisibilite,
         "bail_commercial": bail,
         "loyer_source": loyer_source,
+        "charges_mensuelles": ad.get("charges_mensuelles"),
         "loyer_classique_mensuel": loyer_classique_mensuel,
         "rendement_locatif_brut_pct": rendement_locatif_brut,
         "mensualite_credit": mensualite,

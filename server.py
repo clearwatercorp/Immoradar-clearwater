@@ -185,6 +185,18 @@ def _cors(resp):
     return resp
 
 
+@app.route("/api/note", methods=["POST"])
+def api_note():
+    """Enregistre le suivi d'une annonce (statut + note libre). Persisté en
+    base, préservé lors des ré-imports."""
+    data = request.get_json(force=True, silent=True) or {}
+    ad_id = data.get("id")
+    if not ad_id:
+        return jsonify({"ok": False, "erreur": "id manquant"}), 400
+    ok = storage.set_note(ad_id, data.get("statut", ""), data.get("texte", ""))
+    return jsonify({"ok": ok})
+
+
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
     """Déclenche une recherche à la demande, sans bloquer la requête HTTP

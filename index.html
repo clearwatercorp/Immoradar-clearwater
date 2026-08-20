@@ -102,6 +102,13 @@
   .popup-price{font-weight:800;font-size:15px;color:#e0eaf5}
   .popup-title{font-size:12px;color:#7ac3f0;margin:3px 0 6px}
   .popup-link{font-size:12px;color:#7ac3f0}
+  .note-block{background:#0d1621;border:1px solid #1e2d3d;border-radius:8px;padding:10px 13px;margin:12px 0}
+  .note-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .note-statut{width:150px}
+  .note-texte{flex:1;min-width:160px;background:#080f1a;border:1px solid #1e2d3d;border-radius:6px;color:#c8dff0;padding:6px 10px;font-size:13px;outline:none}
+  .note-texte:focus{border-color:#2a5a8a}
+  .note-saved{font-size:12px;color:#00d68f;white-space:nowrap}
+  @media (max-width:640px){.note-statut,.note-texte{width:100%;flex:1 1 100%}}
 
   /* ─── Mobile (consultation depuis un téléphone) ─────────────────────── */
   @media (max-width: 640px){
@@ -176,6 +183,29 @@
         <option value="">Tous</option>
         <option value="appartement">Appartement</option>
         <option value="maison">Maison</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Statut</label>
+      <select class="filter-select" id="filtre-statut">
+        <option value="">Tous</option>
+        <option value="a_contacter">À contacter</option>
+        <option value="contacte">Contacté</option>
+        <option value="visite">Visité</option>
+        <option value="interesse">Intéressé</option>
+        <option value="ecarte">Écarté</option>
+        <option value="__avec">Avec note</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Trier par</label>
+      <select class="filter-select" id="tri" style="width:150px">
+        <option value="pertinence">Pertinence</option>
+        <option value="prix_asc">Prix croissant</option>
+        <option value="prix_desc">Prix décroissant</option>
+        <option value="cashflow">Cash-flow ↓</option>
+        <option value="date">Date de publication</option>
+        <option value="statut">Statut</option>
       </select>
     </div>
     <div class="filter-checkbox">
@@ -278,9 +308,44 @@ function parseAnnonce(raw){
     image:     raw.image || "",
     nouveau:   !!raw.nouveau,
     firstSeen: new Date((raw.first_seen||0)*1000),
+    datePub:   raw.date_annonce || "",
+    charges:   raw.charges_mensuelles || null,
+    noteStatut:raw.note_statut || "",
+    noteTexte: raw.note_texte || "",
     loc:       raw.loc_saisonniere,
     marchand:  raw.marchand_biens,
   };
+}
+
+// ─── Statuts de suivi ─────────────────────────────────────────────────────
+const STATUTS = {
+  a_contacter:{label:"À contacter", color:"#ffb347"},
+  contacte:   {label:"Contacté",    color:"#4fc3f7"},
+  visite:     {label:"Visité",      color:"#a78bfa"},
+  interesse:  {label:"Intéressé",   color:"#00d68f"},
+  ecarte:     {label:"Écarté",      color:"#777"},
+};
+const STATUT_ORDER = {a_contacter:0, interesse:1, contacte:2, visite:3, "":4, ecarte:5};
+
+function fmtDatePub(s){
+  if(!s) return "";
+  // formats possibles : "2026-08-19 10:00:00" ou ISO
+  const d = new Date(s.replace(" ","T"));
+  if(isNaN(d)) return "";
+  const j = Math.round((Date.now()-d)/86400000);
+  if(j<=0) return "aujourd'hui";
+  if(j===1) return "hier";
+  if(j<30) return "il y a "+j+" j";
+  return d.toLocaleDateString("fr-FR");
+}
+
+async function saveNote(id, statut, texte){
+  try{
+    await fetch("/api/note", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({id, statut, texte})});
+    const a = allAnnonces.find(x=>x.id===id);
+    if(a){ a.noteStatut = statut; a.noteTexte = texte; }
+  }catch(e){ /* silencieux : la note est locale en attendant */ }
 }
 
 let pollTimer = null;
@@ -380,29 +445,44 @@ function getFiltered(){
   const onlyNew = document.getElementById("only-new").checked;
   const q     = document.getElementById("search-input").value.toLowerCase();
 
+  const statutF = document.getElementById("filtre-statut").value;
+  const tri     = document.getElementById("tri").value;
+
   let list = allAnnonces.filter(a=>{
     if(a.prix>pMax) return false;
     if(a.surface>0 && a.surface<sMin) return false;
     if(typeF && a.typeBien!==typeF) return false;
     if(onlyNew && !a.nouveau) return false;
+    if(statutF==="__avec" ? !a.noteStatut : (statutF && a.noteStatut!==statutF)) return false;
     if(q && !a.titre.toLowerCase().includes(q) && !a.ville.toLowerCase().includes(q)) return false;
     if(activeTab!=="tous" && a.source!==activeTab) return false;
     return true;
   });
 
-  const ELIG_ORDER = {bonne:0, limitee:1, peu_adaptee:2};
-  if(activeStrategy==="loc"){
-    list.sort((a,b)=>{
-      const eb = ELIG_ORDER[b.loc?.eligibilite] ?? 3, ea = ELIG_ORDER[a.loc?.eligibilite] ?? 3;
-      if(ea!==eb) return ea-eb;
-      return (b.loc?.rendement_brut_pct||0)-(a.loc?.rendement_brut_pct||0);
-    });
-  } else {
-    list.sort((a,b)=>{
-      const pb = b.marchand?.verdict?.priorite ?? 9, pa = a.marchand?.verdict?.priorite ?? 9;
-      if(pa!==pb) return pa-pb;
-      return (b.marchand?.marge_pct||0)-(a.marchand?.marge_pct||0);
-    });
+  const cashflow = a => activeStrategy==="loc" ? (a.loc?.cashflow_mensuel_moyen ?? -1e9)
+                                               : (a.marchand?.cashflow_locatif_mensuel ?? -1e9);
+  const dateVal  = a => { const d=new Date((a.datePub||"").replace(" ","T")); return isNaN(d)?0:d.getTime(); };
+
+  if(tri==="prix_asc")       list.sort((a,b)=>a.prix-b.prix);
+  else if(tri==="prix_desc") list.sort((a,b)=>b.prix-a.prix);
+  else if(tri==="cashflow")  list.sort((a,b)=>cashflow(b)-cashflow(a));
+  else if(tri==="date")      list.sort((a,b)=>dateVal(b)-dateVal(a));
+  else if(tri==="statut")    list.sort((a,b)=>(STATUT_ORDER[a.noteStatut]??4)-(STATUT_ORDER[b.noteStatut]??4));
+  else { // pertinence (défaut, selon la stratégie active)
+    const ELIG = {bonne:0, limitee:1, peu_adaptee:2};
+    if(activeStrategy==="loc"){
+      list.sort((a,b)=>{
+        const eb=ELIG[b.loc?.eligibilite]??3, ea=ELIG[a.loc?.eligibilite]??3;
+        if(ea!==eb) return ea-eb;
+        return (b.loc?.rendement_brut_pct||0)-(a.loc?.rendement_brut_pct||0);
+      });
+    } else {
+      list.sort((a,b)=>{
+        const pb=b.marchand?.verdict?.priorite??9, pa=a.marchand?.verdict?.priorite??9;
+        if(pa!==pb) return pa-pb;
+        return (b.marchand?.marge_pct||0)-(a.marchand?.marge_pct||0);
+      });
+    }
   }
   return list;
 }
@@ -433,6 +513,37 @@ function verdictBadge(v){
   return `<span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}55">${esc(v?.label||"")}</span>`;
 }
 
+function statutBadge(s){
+  const st = STATUTS[s];
+  if(!st) return "";
+  return `<span class="badge" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55">${st.label}</span>`;
+}
+
+// Métadonnées communes affichées sur chaque carte (date de publi, charges).
+function cardMetaExtra(a){
+  let s = "";
+  if(a.datePub) s += `<span class="age-badge">📅 publié ${esc(fmtDatePub(a.datePub))}</span>`;
+  if(a.charges) s += `<span class="age-badge">🧾 ${fmt(a.charges)} €/mois de charges</span>`;
+  return s;
+}
+
+// Bloc « suivi » (statut + note libre), déplié dans le détail de la carte.
+function noteBlock(a){
+  const opts = Object.entries(STATUTS).map(([k,v])=>
+    `<option value="${k}"${a.noteStatut===k?" selected":""}>${v.label}</option>`).join("");
+  return `
+    <div class="note-block">
+      <div class="nego-title">Mon suivi</div>
+      <div class="note-row">
+        <select class="filter-select note-statut" data-note-id="${esc(a.id)}">
+          <option value="">— Statut —</option>${opts}
+        </select>
+        <input class="note-texte" data-note-id="${esc(a.id)}" placeholder="Note (ex: rappeler l'agence, RDV jeudi…)" value="${esc(a.noteTexte)}"/>
+        <span class="note-saved" data-note-saved="${esc(a.id)}"></span>
+      </div>
+    </div>`;
+}
+
 function renderCardLoc(a){
   const exp = expandedId===a.id;
   const l = a.loc;
@@ -442,10 +553,12 @@ function renderCardLoc(a){
       <div style="flex:1;min-width:0">
         <div class="card-meta">
           ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
+          ${statutBadge(a.noteStatut)}
           ${l?eligibiliteBadge(l.eligibilite):""}
           ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
           <span class="source-badge">${esc(a.source)}</span>
           <span class="age-badge">🕐 vu ${ageStr(a.firstSeen)}</span>
+          ${cardMetaExtra(a)}
         </div>
         <div class="card-title">${esc(a.titre)}</div>
         <div class="card-loc">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""}${a.pieces?" · "+a.pieces+" pièces":""}${l?" · "+esc(l.condition.label):""}</div>
@@ -489,7 +602,9 @@ function renderCardLoc(a){
              (nuitée Airbnb estimée ${fmtEuro(l.airbnb_nuit_estime)}).`
           : `Revenu annuel (loyer de l'exploitant) : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>.`}
         État détecté : <strong>${esc(l.condition.label)}</strong> (${esc(l.condition.confiance)}).
+        ${a.charges?`<br/>Charges copropriété : <strong>${fmt(a.charges)} €/mois</strong> (part non récupérable déduite du cash-flow).`:""}
       </div>`:""}
+      ${noteBlock(a)}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
     </div>`:""}
   </div>`;
@@ -505,11 +620,13 @@ function renderCardMarchand(a){
       <div style="flex:1;min-width:0">
         <div class="card-meta">
           ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
+          ${statutBadge(a.noteStatut)}
           ${m?verdictBadge(m.verdict):""}
           ${m?.bail_commercial?.sous_bail_commercial?'<span class="badge" style="background:#ff6b6b22;color:#ff8888;border:1px solid #ff6b6b55">⛔ Bail commercial</span>':""}
           ${m?.divisibilite?.potentiel===true?'<span class="badge" style="background:#4fc3f722;color:#4fc3f7;border:1px solid #4fc3f755">🔨 Divisible</span>':""}
           ${a.distance!=null?`<span class="badge badge-dist">📍 ${a.distance} km</span>`:""}
           <span class="source-badge">${esc(a.source)}</span>
+          ${cardMetaExtra(a)}
         </div>
         <div class="card-title">${esc(a.titre)}</div>
         <div class="card-loc">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""}${a.typeBien?" · "+esc(a.typeBien):""}${m?" · "+esc(m.condition.label):""}</div>
@@ -552,6 +669,7 @@ function renderCardMarchand(a){
             <div class="nego-stat" style="color:${s.marge>=0?'#00d68f':'#ff6b6b'}">Marge ${fmtSigned(s.marge)} (${s.marge_pct}%)</div>
           </div>`).join("")}
       </div>`:""}
+      ${noteBlock(a)}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
     </div>`:""}
   </div>`;
@@ -610,11 +728,36 @@ document.getElementById("tabs").addEventListener("click", e=>{
 });
 
 document.getElementById("annonces-list").addEventListener("click", e=>{
+  // Ne pas replier la carte quand on interagit avec le bloc note ou le lien.
+  if(e.target.closest(".note-block") || e.target.closest(".btn-annonce")) return;
   const card = e.target.closest(".card");
-  if(card && !e.target.closest(".btn-annonce")) toggleCard(card.dataset.cardId);
+  if(card) toggleCard(card.dataset.cardId);
 });
 
-["prix-max","surface-min","only-new","type-bien"].forEach(id=>{
+// Sauvegarde des notes (statut via change, texte via saisie temporisée).
+document.getElementById("annonces-list").addEventListener("change", e=>{
+  const sel = e.target.closest(".note-statut");
+  if(sel){
+    const id = sel.dataset.noteId;
+    const a = allAnnonces.find(x=>x.id===id);
+    saveNote(id, sel.value, a?a.noteTexte:"").then(()=>renderAll()); // badge visible aussitôt
+  }
+});
+let noteTimer=null;
+document.getElementById("annonces-list").addEventListener("input", e=>{
+  const inp = e.target.closest(".note-texte");
+  if(inp){
+    const id = inp.dataset.noteId;
+    const a = allAnnonces.find(x=>x.id===id);
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(()=>saveNote(id, a?a.noteStatut:"", inp.value).then(()=>{
+      const tag = document.querySelector(`[data-note-saved="${CSS.escape(id)}"]`);
+      if(tag){ tag.textContent="✓ enregistré"; setTimeout(()=>tag.textContent="",1500); }
+    }), 700);
+  }
+});
+
+["prix-max","surface-min","only-new","type-bien","filtre-statut","tri"].forEach(id=>{
   document.getElementById(id).addEventListener("input", renderAll);
   document.getElementById(id).addEventListener("change", renderAll);
 });

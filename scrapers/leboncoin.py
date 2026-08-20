@@ -277,6 +277,70 @@ def _to_int(v):
         return 0
 
 
+# Mots qui, juste avant un « X m² », désignent une surface AUTRE que la
+# surface habitable (jardin, terrain…) — à ne pas confondre avec elle.
+_SURFACE_HORS_SUJET = (
+    "jardin", "terrain", "parcelle", "terrasse", "balcon", "cave", "garage",
+    "cour", "piscine", "cellier", "grenier", "combles", "sous-sol", "sous sol",
+    "dépendance", "dependance", "loggia", "box", "parking", "champ", "prairie",
+)
+_SURFACE_RE = _re.compile(r"(\d{2,4})\s*m(?:²|2|²)", _re.I)
+
+
+# Charges de copropriété. On cherche un montant proche du mot « charges »,
+# en EXCLUANT tout ce qui relève de l'énergie (le DPE affiche des « dépenses
+# annuelles d'énergie » qu'il ne faut pas confondre avec les charges de copro).
+_CHARGES_RE = _re.compile(
+    r"charges[^.\n€]{0,70}?(\d[\d\s.,]{0,9}\d|\d)\s*€\s*(par\s+an|/\s*an|annuel|par\s+mois|/\s*mois|mensuel)?",
+    _re.I,
+)
+# Attention : ne pas mettre « ges » (sous-chaîne de « char-ges ») ni de terme
+# trop court qui se retrouverait dans le mot « charges » lui-même.
+_ENERGIE_MOTS = ("énerg", "energ", "chauffage", "électric", "electric", "consommation", "kwh")
+
+
+def _extract_charges_mensuelles(titre, desc):
+    """Charges de copropriété ramenées au mois, ou None. Ignore les montants
+    liés à l'énergie."""
+    texte = f"{titre or ''} {desc or ''}"
+    for m in _CHARGES_RE.finditer(texte):
+        contexte = texte[max(0, m.start() - 15):m.end() + 15].lower()
+        if any(mot in contexte for mot in _ENERGIE_MOTS):
+            continue  # c'est une dépense d'énergie, pas des charges de copro
+        montant = _to_int(m.group(1))
+        if montant <= 0:
+            continue
+        unite = (m.group(2) or "").lower()
+        if "an" in unite or "annuel" in unite:
+            return round(montant / 12)
+        if "mois" in unite or "mensuel" in unite:
+            return montant
+        # Périodicité non précisée : un gros montant est presque toujours annuel.
+        return round(montant / 12) if montant >= 600 else montant
+    return None
+
+
+def _extract_surface(titre, desc, attrs):
+    """Surface HABITABLE. Ordre : attribut structuré, puis le titre (qui
+    porte quasi toujours la surface habitable sur Leboncoin), puis la
+    description en écartant les « m² » de jardin/terrain/terrasse/etc.
+    (sinon on prend « jardin de 200 m² » pour un bien de 70 m²)."""
+    s = _to_int(attrs.get("square") or attrs.get("surface"))
+    if s:
+        return s
+
+    m = _SURFACE_RE.search(titre or "")
+    if m:
+        return _to_int(m.group(1))
+
+    for m in _SURFACE_RE.finditer(desc or ""):
+        avant = (desc[max(0, m.start() - 22):m.start()]).lower()
+        if any(mot in avant for mot in _SURFACE_HORS_SUJET):
+            continue
+        return _to_int(m.group(1))
+    return 0
+
+
 def _parse_api_ad(ad):
     """Normalise une annonce Leboncoin. Défensif : le format des annonces
     embarquées dans les pages (__NEXT_DATA__) varie et n'a pas toujours le
@@ -306,12 +370,10 @@ def _parse_api_ad(ad):
         desc = ad.get("body") or ad.get("description") or ""
         texte = f"{titre} {desc}"
 
-        # Surface : attribut square/surface, sinon champ direct, sinon titre (« 45 m² »).
-        surface = _to_int(attrs.get("square") or attrs.get("surface") or ad.get("square") or ad.get("surface"))
+        # Surface habitable (évite les m² de jardin/terrain, cf. _extract_surface).
+        surface = _extract_surface(titre, desc, attrs)
         if not surface:
-            m = _re.search(r"(\d{2,4})\s*m(?:²|2|²)", texte, _re.I)
-            if m:
-                surface = _to_int(m.group(1))
+            surface = _to_int(ad.get("square") or ad.get("surface"))
 
         # Pièces : attribut rooms, sinon titre (« T3 », « 3 pièces »).
         pieces = _to_int(attrs.get("rooms") or ad.get("rooms")) or None
@@ -364,6 +426,7 @@ def _parse_api_ad(ad):
             "surface":   surface,
             "pieces":    pieces,
             "type_bien": type_bien,
+            "charges_mensuelles": _extract_charges_mensuelles(titre, desc),
             "dpe":       dpe,
             "lat":       lat,
             "lon":       lon,

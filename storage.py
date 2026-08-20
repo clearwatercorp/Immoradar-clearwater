@@ -22,6 +22,7 @@ def init_db():
                 surface      INTEGER,
                 pieces       INTEGER,
                 type_bien    TEXT,
+                charges_mensuelles INTEGER,
                 dpe          TEXT,
                 cp           TEXT,
                 lat          REAL,
@@ -30,11 +31,31 @@ def init_db():
                 date_annonce TEXT,
                 link         TEXT,
                 image        TEXT,
+                note_statut  TEXT DEFAULT '',
+                note_texte   TEXT DEFAULT '',
                 first_seen   REAL,
                 last_seen    REAL
             )
         """)
+        # Migration douce pour les bases créées avant ces colonnes.
+        for col, ddl in (("note_statut", "TEXT DEFAULT ''"),
+                         ("note_texte", "TEXT DEFAULT ''"),
+                         ("charges_mensuelles", "INTEGER")):
+            try:
+                conn.execute(f"ALTER TABLE annonces ADD COLUMN {col} {ddl}")
+            except sqlite3.OperationalError:
+                pass  # colonne déjà présente
         conn.commit()
+
+
+def set_note(ad_id, statut, texte):
+    with closing(get_conn()) as conn:
+        cur = conn.execute(
+            "UPDATE annonces SET note_statut=?, note_texte=? WHERE id=?",
+            (statut or "", texte or "", ad_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def upsert_ads(ads):
@@ -51,13 +72,14 @@ def upsert_ads(ads):
                 new_ids.append(ad["id"])
                 conn.execute("""
                     INSERT INTO annonces
-                        (id, source, titre, desc, prix, ville, surface, pieces, type_bien, dpe, cp,
+                        (id, source, titre, desc, prix, ville, surface, pieces, type_bien,
+                         charges_mensuelles, dpe, cp,
                          lat, lon, distance_km, date_annonce, link, image, first_seen, last_seen)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     ad["id"], ad["source"], ad.get("titre", ""), ad.get("desc", ""),
                     ad.get("prix", 0), ad.get("ville", ""), ad.get("surface", 0), ad.get("pieces"),
-                    ad.get("type_bien", ""), ad.get("dpe"), ad.get("cp", ""),
+                    ad.get("type_bien", ""), ad.get("charges_mensuelles"), ad.get("dpe"), ad.get("cp", ""),
                     ad.get("lat"), ad.get("lon"), ad.get("distance_km"),
                     ad.get("date", ""), ad.get("link", ""), ad.get("image", ""),
                     now, now,
