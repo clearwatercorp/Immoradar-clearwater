@@ -74,16 +74,34 @@ def refresh_cache():
 print("[module] Scraping à la demande uniquement (pas de rafraîchissement auto).")
 
 
-def enrich(ad):
-    """Ajoute les scores des deux stratégies à une annonce brute."""
+def _mediane_prix_m2(ads):
+    """Médiane du prix/m² par (ville, nombre de pièces) sur tout le dataset —
+    le « marché local » qui sert d'ancrage à l'attractivité et à la valeur de
+    revente. On n'expose une médiane que si ≥ 3 comparables (sinon trop
+    bruité)."""
+    import statistics
+    groupes = {}
+    for a in ads:
+        s = a.get("surface") or 0
+        p = a.get("prix") or 0
+        if s > 0 and p > 0:
+            cle = ((a.get("ville") or "").strip().lower(), a.get("pieces"))
+            groupes.setdefault(cle, []).append(p / s)
+    return {cle: statistics.median(v) for cle, v in groupes.items() if len(v) >= 3}
+
+
+def enrich(ad, marche=None):
+    """Ajoute les scores des deux stratégies à une annonce brute. `marche` est
+    la table des médianes prix/m² locales (cf. _mediane_prix_m2)."""
     ad = dict(ad)
+    marche = marche or {}
     try:
-        ad["loc_saisonniere"] = location_saisonniere.evaluate(ad)
+        ad["loc_saisonniere"] = location_saisonniere.evaluate(ad, marche)
     except Exception as e:
         ad["loc_saisonniere"] = None
         print(f"[scoring] location_saisonniere erreur sur {ad.get('id')}: {e}")
     try:
-        ad["marchand_biens"] = marchand_de_biens.evaluate(ad)
+        ad["marchand_biens"] = marchand_de_biens.evaluate(ad, marche)
     except Exception as e:
         ad["marchand_biens"] = None
         print(f"[scoring] marchand_de_biens erreur sur {ad.get('id')}: {e}")
@@ -106,7 +124,8 @@ def api_annonces():
     ads = storage.get_all_ads()
     for a in ads:
         a["nouveau"] = (now - a["first_seen"]) < config.NEW_WINDOW_H * 3600
-    ads = [enrich(a) for a in ads]
+    marche = _mediane_prix_m2(ads)
+    ads = [enrich(a, marche) for a in ads]
     age_min = round((now - _status["ts"]) / 60, 1) if _status["ts"] else None
     return jsonify({
         "ok":          True,
@@ -245,6 +264,7 @@ def api_meta():
         "lease_etudiant_mois":    config.LEASE_ETUDIANT_MOIS,
         "airbnb_mois":            config.AIRBNB_MOIS,
         "taux_occupation_airbnb": config.TAUX_OCCUPATION_AIRBNB,
+        "airbnb_frais_pct":       config.AIRBNB_FRAIS_PCT,
         "credit_taux_annuel":     config.CREDIT_TAUX_ANNUEL,
         "credit_apport_pct":      config.CREDIT_APPORT_PCT,
         "credit_duree_ans":       config.CREDIT_DUREE_ANS,

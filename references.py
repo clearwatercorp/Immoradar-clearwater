@@ -42,9 +42,11 @@ def get_reference(ville):
     return DEFAUT
 
 
-def loyer_mensuel_estime(surface, ref):
+def loyer_mensuel_estime(surface, ref, mult=1.0):
     """Loyer longue durée estimé : coefficient croissant au m² pour les
-    petites surfaces (studio/T2), typique du marché locatif français."""
+    petites surfaces (studio/T2), typique du marché locatif français. `mult`
+    est le facteur d'attractivité du bien (adresse/standing, cf.
+    analysis.attractivite) — 1.0 = neutre."""
     m2 = ref["loyer_m2_mensuel"]
     if surface <= 25:
         m2 *= 1.35
@@ -52,13 +54,16 @@ def loyer_mensuel_estime(surface, ref):
         m2 *= 1.15
     elif surface > 80:
         m2 *= 0.85
-    return round(surface * m2)
+    return round(surface * m2 * (mult or 1.0))
 
 
-def airbnb_nuit_estimee(surface, ref):
+def airbnb_nuit_estimee(surface, ref, mult=1.0):
+    """Nuitée haute saison estimée, pondérée par l'attractivité du bien."""
     if surface <= 30:
-        return ref["airbnb_nuit_studio"]
-    if surface <= 55:
-        return ref["airbnb_nuit_t2"]
-    # au-delà du T2, interpolation grossière (+12€ par tranche de 15m²)
-    return round(ref["airbnb_nuit_t2"] + ((surface - 55) / 15) * 12)
+        base = ref["airbnb_nuit_studio"]
+    elif surface <= 55:
+        base = ref["airbnb_nuit_t2"]
+    else:
+        # au-delà du T2, interpolation grossière (+12€ par tranche de 15m²)
+        base = ref["airbnb_nuit_t2"] + ((surface - 55) / 15) * 12
+    return round(base * (mult or 1.0))

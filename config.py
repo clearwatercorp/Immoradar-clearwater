@@ -59,6 +59,11 @@ DIVISION_SURFACE_MIN = int(os.environ.get("DIVISION_SURFACE_MIN", 90))
 LEASE_ETUDIANT_MOIS = int(os.environ.get("LEASE_ETUDIANT_MOIS", 8))
 AIRBNB_MOIS          = int(os.environ.get("AIRBNB_MOIS", 4))
 TAUX_OCCUPATION_AIRBNB = float(os.environ.get("TAUX_OCCUPATION_AIRBNB", 0.75))
+# Frais de location courte durée déduits du chiffre d'affaires Airbnb :
+# conciergerie/ménage, plateforme, consommables, petit entretien. Plancher
+# volontairement prudent à 25 % (l'utilisateur veut une estimation réaliste,
+# jamais optimiste). Ajustable dans l'app, mais pas en dessous de 25 %.
+AIRBNB_FRAIS_PCT     = float(os.environ.get("AIRBNB_FRAIS_PCT", 0.25))
 # Surface au-delà de laquelle le profil studio/T2 saisonnier devient moins pertinent.
 LOCATION_SAISONNIERE_SURFACE_MAX = int(os.environ.get("LOCATION_SAISONNIERE_SURFACE_MAX", 55))
 
