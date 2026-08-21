@@ -222,6 +222,8 @@
     <div class="filter-meta" id="filter-meta"></div>
   </div>
 
+  <div id="scenario-airbnb"></div>
+
   <div id="sources-info" class="sources-info" style="display:none"></div>
   <div id="error-banner" class="error-banner" style="display:none"></div>
 
@@ -243,12 +245,50 @@ let currentView   = "list";
 let meta = {
   center:{lat:43.6486,lon:7.1246}, radius_km:10, ville_centre:"Villeneuve-Loubet",
   price_max_hard_cap:1500000, notaire_pct:0.075, agence_revente_pct:0.05,
-  lease_etudiant_mois:8, airbnb_mois:4, taux_occupation_airbnb:0.75,
+  lease_etudiant_mois:8, airbnb_mois:4, taux_occupation_airbnb:0.75, airbnb_frais_pct:0.25,
   credit_taux_annuel:0.037, credit_apport_pct:0.15, credit_duree_ans:20,
   location_saisonniere_surface_max:55, division_surface_min:90, refresh_min:15,
   travaux_cost_m2:{bon_etat:150, a_rafraichir:400, a_renover:900, gros_travaux:1500},
 };
 let map, radiusCircle, markersLayer;
+
+// Scénario Airbnb pilotable par l'utilisateur (recalcul en direct, côté client).
+let scenarioAirbnb = {nuiteeMult:1, occupation:0.75, mois:4, fraisPct:0.25};
+function initScenario(){
+  scenarioAirbnb = {
+    nuiteeMult: 1,
+    occupation: meta.taux_occupation_airbnb ?? 0.75,
+    mois:       meta.airbnb_mois ?? 4,
+    fraisPct:   meta.airbnb_frais_pct ?? 0.25,
+  };
+}
+// Recalcule l'analyse « location saisonnière » d'un bien selon le scénario
+// Airbnb courant (nuitée, occupation, mois d'été, frais). Renvoie a.loc tel
+// quel pour les biens sous bail commercial (pas d'Airbnb). Base : les valeurs
+// pondérées calculées par le serveur (nuitée attractivité, loyer LD, crédit…).
+function adjLoc(a){
+  const l = a.loc;
+  if(!l || l.eligibilite==="bail_commercial" || !l.airbnb_nuit_estime) return l;
+  const sc = scenarioAirbnb;
+  const nuit = Math.round(l.airbnb_nuit_estime * sc.nuiteeMult);
+  const caMensuelEte  = Math.round(nuit * 30 * sc.occupation);
+  const netMensuelEte = Math.round(caMensuelEte * (1 - sc.fraisPct));
+  const moisAirbnb = sc.mois, moisLoc = 12 - sc.mois;
+  const revenuAnnuel = (l.loyer_etudiant_mensuel||0)*moisLoc + netMensuelEte*moisAirbnb;
+  const revenuMensuelMoyen = Math.round(revenuAnnuel/12);
+  const cashflow = revenuMensuelMoyen - (l.mensualite_credit||0) - (l.charges_non_recup||0);
+  const rendement = l.investissement_total>0 ? Math.round(revenuAnnuel/l.investissement_total*1000)/10 : 0;
+  return {...l,
+    airbnb_nuit_scenario: nuit,
+    airbnb_ca_mensuel_ete: caMensuelEte,
+    airbnb_revenu_mensuel_ete: netMensuelEte,
+    airbnb_mois: moisAirbnb,
+    revenu_annuel_estime: revenuAnnuel,
+    revenu_mensuel_moyen: revenuMensuelMoyen,
+    cashflow_mensuel_moyen: cashflow,
+    rendement_brut_pct: rendement,
+  };
+}
 
 // ─── UTILITAIRES ──────────────────────────────────────────────────────────────
 function esc(s){
@@ -277,6 +317,8 @@ async function loadMeta(){
     if(res.ok) meta = await res.json();
   }catch(e){ /* garde les valeurs par défaut */ }
   document.getElementById("prix-max").value = meta.price_max_hard_cap;
+  initScenario();
+  renderScenario();
   renderLegend();
 }
 
@@ -470,7 +512,7 @@ function getFiltered(){
     return true;
   });
 
-  const cashflow = a => activeStrategy==="loc" ? (a.loc?.cashflow_mensuel_moyen ?? -1e9)
+  const cashflow = a => activeStrategy==="loc" ? (adjLoc(a)?.cashflow_mensuel_moyen ?? -1e9)
                                                : (a.marchand?.cashflow_locatif_mensuel ?? -1e9);
   const dateVal  = a => { const d=new Date((a.datePub||"").replace(" ","T")); return isNaN(d)?0:d.getTime(); };
 
@@ -485,7 +527,7 @@ function getFiltered(){
       list.sort((a,b)=>{
         const eb=ELIG[b.loc?.eligibilite]??3, ea=ELIG[a.loc?.eligibilite]??3;
         if(ea!==eb) return ea-eb;
-        return (b.loc?.rendement_brut_pct||0)-(a.loc?.rendement_brut_pct||0);
+        return (adjLoc(b)?.rendement_brut_pct||0)-(adjLoc(a)?.rendement_brut_pct||0);
       });
     } else {
       list.sort((a,b)=>{
@@ -556,6 +598,63 @@ function noteBlock(a){
     </div>`;
 }
 
+// Petit encart transparent : d'où vient la pondération d'attractivité.
+function attractiviteNote(attr){
+  if(!attr) return "";
+  const pct = Math.round((attr.multiplicateur-1)*100);
+  const pos = attr.positionnement_prix_pct;
+  const posTxt = pos==null ? "" : ` · prix/m² ${pos>=0?'+':''}${pos}% vs médiane locale`;
+  const facs = (attr.facteurs||[]).map(f=>
+    `<span style="color:${f.sens==='+'?'#00d68f':'#ff8888'}">${f.sens==='+'?'▲':'▼'} ${esc(f.label)}</span>`).join(" · ");
+  return `<br/>Attractivité : <strong>${pct>=0?'+':''}${pct}%</strong> sur l'estimation${posTxt}${facs?`<br/><span style="font-size:12px">${facs}</span>`:""}`;
+}
+
+// Panneau de scénario Airbnb été : l'utilisateur ajuste nuitée, occupation,
+// mois d'été et frais ; tout se recalcule en direct (adjLoc).
+function renderScenario(){
+  const el = document.getElementById("scenario-airbnb");
+  if(!el) return;
+  if(activeStrategy!=="loc"){ el.style.display="none"; return; }
+  el.style.display="block";
+  const sc = scenarioAirbnb;
+  const pct = v=>Math.round(v*100);
+  el.innerHTML = `
+  <div style="background:#0d1621;border:1px solid #1a2d40;border-radius:12px;padding:14px 18px;margin:6px 0 4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <strong style="color:#7ac3f0">🎛️ Scénario Airbnb été</strong>
+      <span style="color:#4a7a9a;font-size:13px">appliqué à toutes les annonces · recalcul en direct</span>
+      <button id="scenario-reset" class="filter-select" style="cursor:pointer;padding:4px 10px">Réinitialiser</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:12px">
+      <label style="font-size:13px;color:#8ab">Prix de la nuitée : <strong id="sc-nuit-val" style="color:#e0eaf5">${sc.nuiteeMult>=1?'+':''}${pct(sc.nuiteeMult-1)}%</strong>
+        <input type="range" id="sc-nuit" min="0.5" max="2" step="0.05" value="${sc.nuiteeMult}" style="width:100%"/>
+        <span style="font-size:11px;color:#4a7a9a">ajuste la nuitée estimée du bien</span></label>
+      <label style="font-size:13px;color:#8ab">Taux d'occupation été : <strong id="sc-occ-val" style="color:#e0eaf5">${pct(sc.occupation)}%</strong>
+        <input type="range" id="sc-occ" min="0.3" max="1" step="0.05" value="${sc.occupation}" style="width:100%"/>
+        <span style="font-size:11px;color:#4a7a9a">${Math.round(sc.occupation*30)} nuits/mois louées</span></label>
+      <label style="font-size:13px;color:#8ab">Durée en Airbnb : <strong id="sc-mois-val" style="color:#e0eaf5">${sc.mois} mois</strong>
+        <input type="range" id="sc-mois" min="1" max="6" step="1" value="${sc.mois}" style="width:100%"/>
+        <span style="font-size:11px;color:#4a7a9a">${sc.mois*30} jours/an · reste en bail étudiant (${12-sc.mois} mois)</span></label>
+      <label style="font-size:13px;color:#8ab">Frais / conciergerie : <strong id="sc-frais-val" style="color:#e0eaf5">${pct(sc.fraisPct)}%</strong>
+        <input type="range" id="sc-frais" min="0.25" max="0.5" step="0.01" value="${sc.fraisPct}" style="width:100%"/>
+        <span style="font-size:11px;color:#4a7a9a">ménage, plateforme… (mini 25%)</span></label>
+    </div>
+  </div>`;
+  const bind = (id, key, transform) => {
+    const inp = document.getElementById(id);
+    if(!inp) return;
+    inp.addEventListener("input", ()=>{
+      scenarioAirbnb[key] = parseFloat(inp.value);
+      renderScenario();      // rafraîchit les libellés
+      renderAll();           // recalcule cartes + carte + tri
+    });
+  };
+  bind("sc-nuit","nuiteeMult"); bind("sc-occ","occupation");
+  bind("sc-mois","mois"); bind("sc-frais","fraisPct");
+  const reset = document.getElementById("scenario-reset");
+  if(reset) reset.addEventListener("click", ()=>{ initScenario(); renderScenario(); renderAll(); });
+}
+
 // Décomposition du cash-flow pour le tooltip (survol de la pastille).
 function cfTipLoc(l){
   const parts = [`Revenu ${fmtEuro(l.revenu_mensuel_moyen)}/mois`,
@@ -575,7 +674,7 @@ function favBtn(a){
 }
 function renderCardLoc(a){
   const exp = expandedId===a.id;
-  const l = a.loc;
+  const l = adjLoc(a);
   return `
   <div class="card${a.nouveau?" nouveau":""}" id="card-${esc(a.id)}" data-card-id="${esc(a.id)}" style="border-left-color:${l?.eligibilite==='bonne'?'#00d68f':'#1e2d3d'}">
     <div class="card-header">
@@ -631,11 +730,14 @@ function renderCardLoc(a){
         Investissement total (achat + notaire + travaux) : <strong>${fmtEuro(l.investissement_total)}</strong>
         (apport ${fmtEuro(l.apport)}, mensualité crédit ${fmtEuro(l.mensualite_credit)}).
         ${l.eligibilite!=="bail_commercial"
-          ? `Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>
-             (nuitée Airbnb estimée ${fmtEuro(l.airbnb_nuit_estime)}).`
+          ? `Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong> —
+             ${l.lease_etudiant_mois||8} mois de bail à ${fmtEuro(l.loyer_etudiant_mensuel)}/mois
+             + ${l.airbnb_mois} mois Airbnb à ${fmtEuro(l.airbnb_revenu_mensuel_ete)}/mois net
+             (nuitée ${fmtEuro(l.airbnb_nuit_scenario||l.airbnb_nuit_estime)} × ${Math.round(scenarioAirbnb.occupation*100)}% d'occupation, −${Math.round(scenarioAirbnb.fraisPct*100)}% de frais).`
           : `Revenu annuel (loyer de l'exploitant) : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong>.`}
         État détecté : <strong>${esc(l.condition.label)}</strong> (${esc(l.condition.confiance)}).
         ${a.charges?`<br/>Charges copropriété : <strong>${fmt(a.charges)} €/mois</strong> (part non récupérable déduite du cash-flow).`:""}
+        ${attractiviteNote(l.attractivite)}
       </div>`:""}
       ${noteBlock(a)}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
@@ -682,9 +784,11 @@ function renderCardMarchand(a){
     <div class="card-detail">
       <p class="desc-text">${esc(a.desc)||"Pas de description disponible."}</p>
       ${m?`<div class="detail-note">
-        Valeur estimée après travaux : <strong>${fmtEuro(m.valeur_apres_travaux)}</strong> (frais de revente ${fmtEuro(m.frais_revente)}).
+        Valeur estimée après travaux : <strong>${fmtEuro(m.valeur_apres_travaux)}</strong> (frais de revente ${fmtEuro(m.frais_revente)})
+        <em>— ${esc(m.revente_source||"")}</em>.
         Investissement total : <strong>${fmtEuro(m.investissement_total)}</strong> (notaire ${fmtEuro(m.frais_notaire)} + travaux ${fmtEuro(m.cout_travaux)}).
-        État détecté : <strong>${esc(m.condition.label)}</strong> (${esc(m.condition.confiance)}).<br/>
+        État détecté : <strong>${esc(m.condition.label)}</strong> (${esc(m.condition.confiance)}).
+        ${attractiviteNote(m.attractivite)}<br/>
         Rendement locatif : loyer ${fmtEuro(m.loyer_classique_mensuel)}/mois
         <em>(${esc(m.loyer_source||"")})</em>,
         <span title="${esc(cfTipMarchand(m))}" style="cursor:help;border-bottom:1px dotted #5a7a9a">cash-flow ${fmtSigned(m.cashflow_locatif_mensuel)}/mois ⓘ</span>.<br/>
@@ -789,6 +893,7 @@ document.getElementById("strategy-tabs").addEventListener("click", e=>{
   activeStrategy = btn.dataset.strategy;
   document.querySelectorAll(".strategy-tab").forEach(b=>b.classList.toggle("active", b===btn));
   expandedId = null;
+  renderScenario();
   renderAll();
 });
 
@@ -900,7 +1005,7 @@ function renderMap(filtered){
 
     const marker = L.circleMarker([a.lat, a.lon], { radius:8, color, weight:2, fillColor:color, fillOpacity:0.5 });
     const metric = activeStrategy==="loc"
-      ? `${a.loc?.rendement_brut_pct ?? '?'}% rendement brut`
+      ? `${adjLoc(a)?.rendement_brut_pct ?? '?'}% rendement brut`
       : `${a.marchand?.marge_pct ?? '?'}% marge (${fmtSigned(a.marchand?.marge||0)})`;
     marker.bindPopup(`
       <div class="popup-price">${fmtEuro(a.prix)}</div>
