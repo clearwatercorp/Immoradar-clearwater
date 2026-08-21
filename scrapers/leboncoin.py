@@ -290,72 +290,106 @@ _SURFACE_HORS_SUJET = (
 _SURFACE_RE = _re.compile(r"(\d{2,4})\s*m(?:²|2|²)", _re.I)
 
 
+# --- Périodicité d'un montant (annuel / trimestriel / mensuel) --------------
+# On la déduit du fragment de texte entourant le montant, qu'elle soit
+# annoncée AVANT (« loyer annuel de 4 936 € ») ou APRÈS (« 4 800 €/an »).
+_PER_TRIMESTRE = _re.compile(r"trimestr", _re.I)
+_PER_ANNUEL = _re.compile(r"annuel|annuelle|/\s*an\b|par\s+an\b|à\s+l['’]?\s*ann[ée]e|a\s+l['’]?\s*annee|\bh\.?t\.?\s*/?\s*an\b", _re.I)
+_PER_MENSUEL = _re.compile(r"mensuel|mensuelle|/\s*mois|par\s+mois|\bmois\b|\bcc\s*/\s*mois\b", _re.I)
+
+
+def _periode_diviseur(fragment, defaut_annuel_si_gros=None):
+    """Diviseur pour ramener un montant au mois : 12 (annuel), 3 (trimestriel),
+    1 (mensuel). Si la périodicité n'est pas explicite et qu'un seuil est
+    fourni, un montant >= seuil est traité comme annuel."""
+    f = fragment or ""
+    if _PER_TRIMESTRE.search(f):
+        return 3
+    a = _PER_ANNUEL.search(f)
+    mth = _PER_MENSUEL.search(f)
+    if a and not mth:
+        return 12
+    if mth and not a:
+        return 1
+    if a and mth:
+        # Les deux apparaissent : on tranche par la plus proche du montant.
+        return 12 if a.start() > mth.start() else 1
+    return None  # inconnue
+
+
 # Charges de copropriété. On cherche un montant proche du mot « charges »,
-# en EXCLUANT tout ce qui relève de l'énergie (le DPE affiche des « dépenses
-# annuelles d'énergie » qu'il ne faut pas confondre avec les charges de copro).
+# en EXCLUANT l'énergie (« dépenses annuelles d'énergie » du DPE) et les
+# tournures où « charges » qualifie un LOYER (« hors charges », « charges
+# comprises ») — là le montant est un loyer, pas des charges de copro.
 _CHARGES_RE = _re.compile(
-    r"charges[^.\n€]{0,70}?(\d[\d\s.,]{0,9}\d|\d)\s*€\s*(par\s+an|/\s*an|annuel|par\s+mois|/\s*mois|mensuel)?",
+    r"charges?[^.\n€]{0,70}?(\d[\d\s.,]{0,9}\d|\d)\s*€\s*"
+    r"(par\s+an|/\s*an|annuel\w*|par\s+trimestre|trimestriel\w*|par\s+mois|/\s*mois|mensuel\w*)?",
     _re.I,
 )
-# Attention : ne pas mettre « ges » (sous-chaîne de « char-ges ») ni de terme
-# trop court qui se retrouverait dans le mot « charges » lui-même.
-_ENERGIE_MOTS = ("énerg", "energ", "chauffage", "électric", "electric", "consommation", "kwh")
+_ENERGIE_MOTS = ("énerg", "energ", "chauffage", "électric", "electric", "consommation", "kwh", "gaz")
+# Tournures où « charges » qualifie le loyer, pas un montant de charges de copro.
+_CHARGES_LOYER = ("hors charge", "hors charges", "charges comprises", "charges incluses",
+                  "cc", "c.c", "charge comprise")
 
 
 def _extract_charges_mensuelles(titre, desc):
-    """Charges de copropriété ramenées au mois, ou None. Ignore les montants
-    liés à l'énergie."""
+    """Charges de copropriété ramenées au mois, ou None. Ignore l'énergie et
+    les tournures « hors charges / charges comprises » (qui portent sur le
+    loyer)."""
     texte = f"{titre or ''} {desc or ''}"
     for m in _CHARGES_RE.finditer(texte):
-        contexte = texte[max(0, m.start() - 15):m.end() + 15].lower()
+        avant = texte[max(0, m.start() - 20):m.start() + 8].lower()
+        contexte = texte[max(0, m.start() - 20):m.end() + 20].lower()
         if any(mot in contexte for mot in _ENERGIE_MOTS):
-            continue  # c'est une dépense d'énergie, pas des charges de copro
+            continue  # dépense d'énergie, pas des charges de copropriété
+        if any(mot in avant for mot in _CHARGES_LOYER):
+            continue  # « hors charges … » / « charges comprises … » = loyer
         montant = _to_int(m.group(1))
         if montant <= 0:
             continue
-        unite = (m.group(2) or "").lower()
-        if "an" in unite or "annuel" in unite:
-            return round(montant / 12)
-        if "mois" in unite or "mensuel" in unite:
-            return montant
-        # Périodicité non précisée : un gros montant est presque toujours annuel.
-        return round(montant / 12) if montant >= 600 else montant
+        div = _periode_diviseur(m.group(0))
+        if div is None:
+            # Périodicité non précisée : un montant élevé est presque toujours
+            # annuel (des charges mensuelles dépassent rarement ~500 €).
+            div = 12 if montant >= 600 else 1
+        return round(montant / div)
     return None
 
 
-# Loyer réel mentionné (bien déjà loué, ou loyer annoncé par le vendeur).
-# Ex. « locataire en place avec un loyer hors charge de 420 € », « loué 650€/mois ».
+# Loyer réel : on n'accepte QUE les mentions attestant un loyer effectif
+# (bien loué / locataire en place / loyer garanti / revenu locatif), pas une
+# estimation du vendeur — sinon on écraserait à tort l'estimation de marché.
 _LOYER_RE = _re.compile(
-    r"(?:loyer|lou[ée]e?s?)[^.\n€]{0,35}?(\d[\d\s.,]{1,7})\s*€\s*(/?\s*mois|par\s+mois|/?\s*an|annuel|hors\s+charge)?",
+    r"(?:lou[ée]e?s?|locataires?|loyers?\s+(?:actuel\w*|per[çc]u\w*|mensuel\w*|annuel\w*|"
+    r"garanti\w*|en\s+cours|net\w*|hors\s+charges?)|revenus?\s+locatifs?|rapporte\w*|"
+    r"bail\s+en\s+cours|d[ée]j[àa]\s+lou[ée])"
+    r"[^.\n€]{0,45}?(\d[\d\s.,]{1,7})\s*€\s*"
+    r"(/?\s*mois|par\s+mois|mensuel\w*|/?\s*an|annuel\w*|par\s+an|hors\s+charges?|cc)?",
     _re.I,
 )
+# Marqueurs d'une simple ESTIMATION (à ne pas prendre pour un loyer réel).
+_LOYER_ESTIME = ("estimation", "estimé", "estime", "potentiel", "de marché", "de marche",
+                 "pourrait", "envisageable", "possibilité de lou", "possibilite de lou",
+                 "peut être lou", "peut etre lou", "à prévoir", "a prevoir")
 
 
 def _extract_loyer_reel(titre, desc):
-    """Loyer mensuel réel indiqué dans l'annonce (à utiliser plutôt que
-    l'estimation de marché), ou None. Ignore les mentions sans montant."""
+    """Loyer mensuel réel indiqué dans l'annonce (bien occupé / loyer garanti),
+    à utiliser plutôt que l'estimation de marché, ou None. On écarte les
+    montants présentés comme de simples estimations."""
     texte = f"{titre or ''} {desc or ''}"
     for m in _LOYER_RE.finditer(texte):
         montant = _to_int(m.group(1))
         if montant < 100:
             continue  # trop faible pour un loyer mensuel plausible
-        unite = (m.group(2) or "").lower()
-        # La périodicité peut être annoncée APRÈS le montant (« 4 800 €/an »,
-        # capturé dans unite) mais aussi AVANT (« loyer ANNUEL garanti : 4 936 € »).
-        # On regarde donc tout le fragment apparié pour ne pas prendre un loyer
-        # annuel pour un loyer mensuel. (« an » nu est proscrit : il apparaît
-        # dans « garanti », « an-née »…, d'où des marqueurs explicites.)
-        matched = m.group(0).lower()
-        mensuel = "mois" in unite or "mensuel" in matched or "/mois" in matched
-        annuel = (("an" in unite and "mois" not in unite)
-                  or "annuel" in matched or "/an" in matched or "par an" in matched)
-        if annuel and not mensuel:
-            return round(montant / 12)
-        if mensuel:
-            return montant
-        if montant > 5000:        # sans périodicité mais gros montant = annuel
-            return round(montant / 12)
-        return montant
+        contexte = texte[max(0, m.start() - 30):m.end() + 5].lower()
+        if any(mot in contexte for mot in _LOYER_ESTIME):
+            continue  # c'est une estimation, pas un loyer effectif
+        div = _periode_diviseur(m.group(0))
+        if div is None:
+            # Sans périodicité : un gros montant est un loyer annuel.
+            div = 12 if montant > 5000 else 1
+        return round(montant / div)
     return None
 
 
