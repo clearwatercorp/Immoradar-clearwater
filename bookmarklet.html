@@ -148,14 +148,15 @@ var CODE = [
 "function fiche(){",
 "if(j>=uniq.length){envoyer();return;}",
 "var a=uniq[j];var u=adUrl(a);",
+"window.__ir_fetch=window.__ir_fetch||0;window.__ir_txt=window.__ir_txt||0;",
 // On va chercher la fiche SAUF si on a deja une description consequente
 // (> 400 car.) : la liste ne fournit souvent qu'un extrait tronque, or
 // charges / loyer / bail sont plus bas dans le texte complet.
 "if((a.body&&a.body.length>400)||!u){j++;ov('ImmoRadar : lecture des fiches… '+j+'/'+uniq.length);setTimeout(fiche,0);return;}",
 "ov('ImmoRadar : lecture des fiches… '+(j+1)+'/'+uniq.length);",
 "fetch(u,{credentials:'include'}).then(function(r){return r.ok?r.text():'';}).then(function(h){",
-"var b=h?bodyFromHtml(h):'';if(b)a.body=b;j++;setTimeout(fiche,1200);",
-"}).catch(function(){j++;setTimeout(fiche,1200);});}",
+"window.__ir_fetch++;var b=h?bodyFromHtml(h):'';if(b){a.body=b;window.__ir_txt++;}j++;setTimeout(fiche,1200);",
+"}).catch(function(){window.__ir_fetch++;j++;setTimeout(fiche,1200);});}",
 "fiche();}",
 "function envoyer(){",
 "ov('ImmoRadar : envoi de '+uniq.length+' annonces…');",
@@ -163,7 +164,7 @@ var CODE = [
 ".then(function(r){return r.json();})",
 ".then(function(j){ovClose();",
 "var m='ImmoRadar : '+j.retenues+' annonce(s) importee(s) sur '+j.recues+' lue(s), '+parcourues+' page(s) parcourue(s)';",
-"if(j.retenues>0){m+=' ('+j.nouvelles+' nouvelle(s)).';if(j.avec_description!=null&&j.avec_description<j.retenues)m+='\\n\\nNote : '+j.avec_description+' annonce(s) avec description complete. Sans description, l\\'etat/charges/bail commercial sont moins bien detectes.';m+='\\n\\nOuvrez ImmoRadar pour les analyser.';}",
+"if(j.retenues>0){m+=' ('+j.nouvelles+' nouvelle(s)).';m+='\\n\\nFiches ouvertes : '+(window.__ir_fetch||0)+', avec description : '+(window.__ir_txt||0)+'.';if((window.__ir_fetch||0)===0)m+=' (Aucune fiche ouverte : verifiez que vous utilisez bien le favori a jour de cette page.)';else if((window.__ir_txt||0)===0)m+=' (Fiches ouvertes mais aucune description lue : Leboncoin a peut-etre bloque les requetes — reessayez avec moins d\\'annonces.)';m+='\\n\\nOuvrez ImmoRadar pour les analyser.';}",
 "else{var r=j.rejets||{};var dd=[];if(r.sans_surface)dd.push(r.sans_surface+' sans surface');if(r.sans_prix)dd.push(r.sans_prix+' sans prix');",
 "m+='.\\n\\n'+(dd.length?('Ecartees : '+dd.join(', ')+'.'):'Aucune annonce lue.');",
 "if((j.villes||[]).length)m+='\\nVilles vues : '+j.villes.join(', ')+'.';",
