@@ -67,6 +67,7 @@
   .card-price{text-align:right;flex-shrink:0}
   .card-price .main-price{font-size:18px;font-weight:800;color:#e0eaf5;font-variant-numeric:tabular-nums}
   .card-price .price-m2{font-size:12px;color:#3a5a7a}
+  .card-price .price-mkt{font-size:11px;font-weight:700;margin-top:1px;cursor:help}
   .stats-row{display:flex;gap:7px;padding:0 17px 13px;flex-wrap:wrap}
   .stat-pill{background:#16202e;border:1px solid #1e2d3d;border-radius:8px;padding:6px 11px;display:flex;flex-direction:column;align-items:center;min-width:82px}
   .stat-pill.good{background:#1a2e1a;border-color:#00d68f33}
@@ -595,6 +596,7 @@ function renderCardLoc(a){
       <div class="card-price">
         <div class="main-price">${fmtEuro(a.prix)}</div>
         ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
+        ${marketBadge(a)}
       </div>
     </div>
     ${l && l.eligibilite==="bail_commercial"?`
@@ -664,6 +666,7 @@ function renderCardMarchand(a){
       <div class="card-price">
         <div class="main-price">${fmtEuro(a.prix)}</div>
         ${a.surface>0?`<div class="price-m2">${fmt(a.prix/a.surface)} €/m²</div>`:""}
+        ${marketBadge(a)}
       </div>
     </div>
     ${m?`
@@ -716,7 +719,41 @@ function renderTabs(){
     </button>`).join("");
 }
 
+// Médiane du prix/m² par (ville + nb de pièces), calculée sur les annonces
+// importées elles-mêmes : un T2 est ainsi comparé aux autres T2 de sa ville.
+let marketMedians = {};
+function marketKey(a){ return (a.ville||"").toLowerCase().trim()+"|"+(a.pieces||"?"); }
+function computeMedians(){
+  const groups = {};
+  allAnnonces.forEach(a=>{
+    if(a.surface>0 && a.prix>0 && a.pieces){
+      (groups[marketKey(a)] = groups[marketKey(a)]||[]).push(a.prix/a.surface);
+    }
+  });
+  marketMedians = {};
+  for(const k in groups){
+    const arr = groups[k].sort((x,y)=>x-y);
+    if(arr.length>=3){  // échantillon minimal pour une médiane parlante
+      const m = Math.floor(arr.length/2);
+      marketMedians[k] = {med: arr.length%2 ? arr[m] : (arr[m-1]+arr[m])/2, n: arr.length};
+    }
+  }
+}
+function marketBadge(a){
+  if(!(a.surface>0 && a.prix>0 && a.pieces)) return "";
+  const g = marketMedians[marketKey(a)];
+  if(!g) return "";  // pas assez de comparables (même ville + typologie)
+  const ecart = Math.round((a.prix/a.surface - g.med)/g.med*100);
+  const t = "T"+a.pieces;
+  const tip = `Prix/m² ${ecart>=0?"+":""}${ecart}% vs médiane des ${t} à ${esc(a.ville)} `
+            + `(${fmt(g.med)} €/m², ${g.n} biens comparés)`;
+  if(Math.abs(ecart)<2) return `<div class="price-mkt" style="color:#5a7a9a" title="${tip}">≈ marché ${t}</div>`;
+  const color = ecart<0 ? "#00d68f" : "#ff9a5a";
+  return `<div class="price-mkt" style="color:${color}" title="${tip}">${ecart>0?"+":""}${ecart}% / ${t} ${esc(a.ville)}</div>`;
+}
+
 function renderAll(){
+  computeMedians();
   renderTabs();
   const filtered = getFiltered();
 
