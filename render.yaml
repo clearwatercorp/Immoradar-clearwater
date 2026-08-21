@@ -28,6 +28,17 @@ services:
       # - key: PROXY_URL
       #   value: "http://identifiant:motdepasse@hote:port"
       #
+      # ─── Sauvegarde DURABLE et gratuite des résultats (Turso / libSQL) ────
+      # Sans ça, le disque du plan gratuit est effacé à chaque redémarrage.
+      # 1) Créer un compte gratuit sur https://turso.tech
+      # 2) `turso db create immoradar` puis `turso db show immoradar --url`
+      #    et `turso db tokens create immoradar`
+      # 3) Coller les deux valeurs ici (ou via le tableau de bord Render) :
+      # - key: TURSO_DATABASE_URL
+      #   value: "libsql://immoradar-votreorg.turso.io"
+      # - key: TURSO_AUTH_TOKEN
+      #   value: "votre-jeton"
+      #
       # Les critères de recherche sont modifiables ici sans toucher au code
       # (sinon les valeurs par défaut de config.py s'appliquent).
       # - key: PRICE_MAX_HARD_CAP

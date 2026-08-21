@@ -93,6 +93,32 @@ en hébergement ; les quatre fonctionnent en local).
 
 ---
 
+## Garder les résultats durablement (gratuit) — Turso
+
+Sur le plan gratuit Render, le disque est **effacé à chaque redémarrage** : les
+annonces analysées (et les biens suivis) repartent alors de zéro. Pour les
+conserver durablement **sans payer**, on branche une base **Turso** (SQLite
+hébergé, libSQL) — offre gratuite et permanente :
+
+1. Créer un compte sur **https://turso.tech** (gratuit, sans carte).
+2. Créer la base et récupérer les identifiants (interface web, ou CLI) :
+   ```
+   turso db create immoradar
+   turso db show immoradar --url        # -> libsql://immoradar-xxx.turso.io
+   turso db tokens create immoradar     # -> le jeton
+   ```
+3. Dans **Render → Environment**, ajouter deux variables :
+   - `TURSO_DATABASE_URL` = l'URL `libsql://…`
+   - `TURSO_AUTH_TOKEN` = le jeton
+4. Enregistrer : le service redémarre et bascule automatiquement sur Turso.
+   L'app affiche alors « 💾 Sauvegarde durable active » en bas de page.
+
+Sans ces variables, le stockage reste le SQLite local (temporaire en
+hébergement) et le bouton **⬇️ Exporter** permet de sauvegarder à la main vos
+favoris/notes.
+
+---
+
 ## Option B — En local (sans terminal, mais Python requis)
 
 1. **Télécharger le projet** : sur la page GitHub du dépôt, bouton vert **`Code`**

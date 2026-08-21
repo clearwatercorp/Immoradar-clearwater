@@ -18,6 +18,16 @@ CACHE_TTL    = int(os.environ.get("CACHE_TTL", 15 * 60))
 NEW_WINDOW_H = int(os.environ.get("NEW_WINDOW_H", 24))
 DB_PATH      = os.environ.get("DB_PATH", "annonces.db")
 
+# Stockage PERSISTANT gratuit via Turso (libSQL, SQLite hébergé). Renseigner
+# ces deux variables (tableau de bord Render) fait basculer le stockage sur
+# Turso : les résultats survivent alors aux redéploiements et au sommeil du
+# service, contrairement au disque éphémère du plan gratuit Render.
+#   TURSO_DATABASE_URL  = libsql://<votre-base>-<org>.turso.io
+#   TURSO_AUTH_TOKEN    = <jeton généré par `turso db tokens create`>
+# Laisser vide pour utiliser le SQLite local (développement).
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "").strip()
+TURSO_AUTH_TOKEN   = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+
 # Scrapfly — service de scraping qui franchit DataDome/Cloudflare/PerimeterX
 # via ses propres IP résidentielles. Palier GRATUIT permanent (1000 crédits/
 # mois, sans carte). Mode recommandé en hébergement : coller ici la clé du

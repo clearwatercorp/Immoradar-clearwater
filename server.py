@@ -302,6 +302,8 @@ def api_meta():
         "refresh_min":            config.CACHE_TTL // 60,
         "proxy_actif":            bool(config.PROXY_URL),
         "scrapfly_actif":         bool(config.SCRAPFLY_KEY),
+        "stockage_persistant":    storage.persistant(),
+        "stockage_backend":       storage.storage_backend(),
     })
 
 
