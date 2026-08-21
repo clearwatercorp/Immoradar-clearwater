@@ -323,8 +323,14 @@ def _periode_diviseur(fragment, defaut_annuel_si_gros=None):
 # comprises ») — là le montant est un loyer, pas des charges de copro.
 # Le montant peut être suivi de « € » ou du mot « euros » (« 762 euros »).
 _EUR = r"(?:€|euros?|eur\b)"
+# Un montant : soit des milliers correctement groupés par 3 (« 4 800 »,
+# « 1 784 », « 1.200 »), soit un nombre simple d'au plus 7 chiffres, avec
+# éventuelle décimale. IMPORTANT : n'autorise PAS « 2028 614 » (année + loyer
+# accolés) à être lu comme « 2 028 614 » — sinon un loyer de 614 € devient
+# 2 millions. Les espaces insécables/fines de Leboncoin sont pris en compte.
+_AMOUNT = r"(?<![\d.,])((?:\d{1,3}(?:[   .]\d{3})+|\d{1,7})(?:,\d{1,2})?)"
 _CHARGES_RE = _re.compile(
-    rf"charges?[^.\n€]{{0,70}}?(\d[\d\s.,]{{0,9}}\d|\d)\s*{_EUR}\s*"
+    rf"charges?[^.\n€]{{0,70}}?{_AMOUNT}\s*{_EUR}\s*"
     r"(par\s+an|/\s*an|annuel\w*|par\s+trimestre|trimestriel\w*|par\s+mois|/\s*mois|mensuel\w*)?",
     _re.I,
 )
@@ -365,7 +371,7 @@ _LOYER_RE = _re.compile(
     r"(?:lou[ée]e?s?|locataires?|loyers?\s+(?:actuel\w*|per[çc]u\w*|mensuel\w*|annuel\w*|"
     r"garanti\w*|en\s+cours|net\w*|hors\s+charges?)|revenus?\s+locatifs?|rapporte\w*|"
     r"bail\s+en\s+cours|d[ée]j[àa]\s+lou[ée])"
-    rf"[^.\n€]{{0,45}}?(\d[\d\s.,]{{1,7}})\s*{_EUR}\s*"
+    rf"[^.\n€]{{0,45}}?{_AMOUNT}\s*{_EUR}\s*"
     r"(/?\s*mois|par\s+mois|mensuel\w*|/?\s*an|annuel\w*|par\s+an|hors\s+charges?|cc)?",
     _re.I,
 )

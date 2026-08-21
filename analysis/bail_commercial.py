@@ -58,7 +58,9 @@ EXPLOITANTS = [
 # Montants : on cherche le loyer annoncé et sa périodicité. Le montant peut
 # être suivi du symbole « € » comme du mot « euros » (fréquent sur ces
 # annonces : « 2497,36 euros HT »).
-_MONTANT = r"(\d[\d\s.,]{1,12})"
+# Milliers correctement groupés par 3 OU nombre simple, décimale optionnelle.
+# On n'accepte PAS « 2028 614 » comme un seul montant (année + loyer accolés).
+_MONTANT = r"(?<![\d.,])((?:\d{1,3}(?:[   .]\d{3})+|\d{1,7})(?:,\d{1,2})?)"
 _EUR = r"(?:€|euros?|eur\b)"
 
 PATTERNS_LOYER = [
