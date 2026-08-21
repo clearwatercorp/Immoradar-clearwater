@@ -33,14 +33,24 @@ def evaluate(ad):
     acquisition = cout_acquisition(prix, cout_travaux)
     investissement = acquisition["investissement_total"]
 
+    ref = get_reference(ville)
     bail = detect_bail_commercial(ad.get("titre", ""), ad.get("desc", ""), prix)
     charges = charges_non_recup(ad)
 
     # Bien sous bail commercial (résidence de tourisme/étudiante/services) :
     # l'exploitant détient le bail, la stratégie bail étudiant + Airbnb est
-    # inapplicable. Seul le loyer annoncé dans l'annonce fait foi.
+    # inapplicable. Le loyer annoncé fait foi ; à défaut, on propose tout de
+    # même une ESTIMATION de marché (clairement signalée) pour ne jamais
+    # laisser le loyer vide — l'exploitant verse en général moins.
     if bail["sous_bail_commercial"]:
         loyer_reel = bail.get("loyer_mensuel")
+        if loyer_reel:
+            loyer_source = "loyer annoncé (bail commercial)"
+        elif surface > 0:
+            loyer_reel = round(loyer_mensuel_estime(surface, ref))
+            loyer_source = "estimation marché (loyer exploitant non précisé)"
+        else:
+            loyer_source = "loyer non précisé"
         revenu_annuel = (loyer_reel or 0) * 12
         revenu_mensuel_moyen = loyer_reel or 0
         rendement_brut = (
@@ -56,6 +66,7 @@ def evaluate(ad):
             "apport": acquisition["apport"],
             "mensualite_credit": acquisition["mensualite_credit"],
             "loyer_etudiant_mensuel": None,
+            "loyer_source": loyer_source,
             "airbnb_nuit_estime": None,
             "airbnb_revenu_mensuel_ete": None,
             "revenu_annuel_estime": revenu_annuel,
@@ -66,7 +77,6 @@ def evaluate(ad):
             "cashflow_mensuel_moyen": revenu_mensuel_moyen - acquisition["mensualite_credit"] - charges,
         }
 
-    ref = get_reference(ville)
     # Loyer réel indiqué dans l'annonce (locataire en place) : il prime sur
     # l'estimation pour la part longue durée / bail étudiant.
     if ad.get("loyer_reel"):

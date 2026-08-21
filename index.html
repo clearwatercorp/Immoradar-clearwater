@@ -603,7 +603,7 @@ function renderCardLoc(a){
     <div class="stats-row">
       ${statPill("Rendement brut", l.rendement_brut_pct?l.rendement_brut_pct+"%":"?", "bad")}
       ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad", cfTipLoc(l))}
-      ${statPill("Loyer exploitant", l.revenu_mensuel_moyen?fmtEuro(l.revenu_mensuel_moyen)+"/mois":"non précisé", "bad")}
+      ${statPill((l.loyer_source||"").indexOf("estimation")===0?"Loyer estimé":"Loyer exploitant", l.revenu_mensuel_moyen?fmtEuro(l.revenu_mensuel_moyen)+"/mois":"non précisé", "bad", l.loyer_source?esc(l.loyer_source):"")}
       ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
     </div>`
     : l?`
@@ -623,7 +623,9 @@ function renderCardLoc(a){
         ${l.bail_commercial.loyer_mensuel
           ? `Loyer versé par l'exploitant : <strong>${fmtEuro(l.bail_commercial.loyer_mensuel)}/mois</strong>
              (extrait de l'annonce, source : ${esc(l.bail_commercial.periodicite_source)})`
-          : `Aucun loyer trouvé dans la description — <strong>à demander au vendeur</strong> avant toute analyse.`}
+          : (l.revenu_mensuel_moyen
+             ? `Loyer exploitant non précisé dans l'annonce — <strong>estimation de marché ${fmtEuro(l.revenu_mensuel_moyen)}/mois</strong> (l'exploitant verse en général moins : à confirmer auprès du vendeur).`
+             : `Aucun loyer trouvé dans la description — <strong>à demander au vendeur</strong> avant toute analyse.`)}
       </div>`:""}
       ${l?`<div class="detail-note">
         Investissement total (achat + notaire + travaux) : <strong>${fmtEuro(l.investissement_total)}</strong>
