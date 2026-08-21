@@ -55,11 +55,11 @@
       <span class="sub">Vous pouvez affiner les critères directement sur Leboncoin : le favori récupère ce qui est affiché.</span>
     </div></div>
     <div class="step"><div class="num">4</div><div class="step-body">
-      Sur la page de <strong>résultats</strong> Leboncoin, cliquez le favori <em>« 📡 Envoyer vers ImmoRadar »</em>. Un message confirme le nombre d'annonces envoyées.
+      Sur la page de <strong>résultats</strong> Leboncoin, cliquez le favori <em>« 📡 Envoyer vers ImmoRadar »</em>. Il vous demande <strong>combien d'annonces importer</strong> (il affiche le total disponible) puis parcourt les pages suivantes tout seul, lentement, pour ne pas être bloqué. Un message confirme le nombre d'annonces envoyées.
     </div></div>
     <div class="step"><div class="num">5</div><div class="step-body">
       Revenez sur <a class="plain" href="/">ImmoRadar</a> : vos annonces sont là, analysées selon les 2 stratégies.
-      <div class="sub">Pour en récupérer plus : sur Leboncoin, passez à la page suivante et recliquez le favori — les annonces s'ajoutent.</div>
+      <div class="sub">Comptez ~1 seconde par page. Si Leboncoin restreint temporairement l'accès, patientez quelques minutes et relancez avec un nombre plus petit.</div>
     </div></div>
   </div>
 
@@ -92,15 +92,15 @@
 // pour que les annonces soient envoyées au bon endroit.
 var CODE = [
 "(function(){",
-"var DEF=40;",                          // nb de pages par defaut
-"var MAXP=parseInt(prompt('ImmoRadar : combien de pages Leboncoin parcourir ? (~35 annonces/page)',DEF))||DEF;",
-"if(MAXP<1)MAXP=1;if(MAXP>200)MAXP=200;",
 "function ov(t){var o=document.getElementById('__ir_ov');if(!o){o=document.createElement('div');o.id='__ir_ov';o.style.cssText='position:fixed;top:12px;right:12px;z-index:2147483647;background:#0d1e30;color:#7ac3f0;padding:11px 16px;border-radius:9px;font:14px sans-serif;box-shadow:0 4px 22px rgba(0,0,0,.6)';document.body.appendChild(o);}o.textContent=t;}",
 "function ovClose(){var o=document.getElementById('__ir_ov');if(o)o.remove();}",
 "function F(d){var a=[],s={};(function w(o){if(!o||typeof o!=='object')return;",
 "if(Array.isArray(o)){o.forEach(w);return;}",
 "if(o.list_id&&o.subject!==undefined&&o.price!==undefined&&!s[o.list_id]){s[o.list_id]=1;a.push(o);}",
 "for(var k in o){w(o[k]);}})(d);return a;}",
+// Total d'annonces de la recherche : Leboncoin l'expose dans __NEXT_DATA__
+// (total / total_all). On prend le plus grand nombre plausible rencontre.
+"function total(d){var best=0;(function w(o){if(!o||typeof o!=='object')return;if(Array.isArray(o)){o.forEach(w);return;}for(var k in o){var v=o[k];if((k==='total'||k==='total_all'||k==='nb_ads')&&typeof v==='number'&&v>best&&v<1000000)best=v;w(v);}})(d);return best;}",
 "function fromHtml(h){try{var doc=new DOMParser().parseFromString(h,'text/html');var n=doc.getElementById('__NEXT_DATA__');return n?F(JSON.parse(n.textContent)):[];}catch(e){return [];}}",
 "function pageUrl(base,n){return base+(base.indexOf('?')>-1?'&':'?')+'page='+n;}",
 "var d=null,n=document.getElementById('__NEXT_DATA__');",
@@ -108,6 +108,13 @@ var CODE = [
 "if(!d&&window.__NEXT_DATA__)d=window.__NEXT_DATA__;",
 "var all=d?F(d):[];",
 "if(!all.length){alert('ImmoRadar : aucune annonce sur cette page. Ouvrez une page de RESULTATS de recherche Leboncoin, puis recliquez.');return;}",
+"var parPage=all.length;",                 // nb d'annonces reellement sur la page 1
+"var dispo=d?total(d):0;",                  // total annonces de la recherche
+"var libTot=dispo?(' sur '+dispo+' au total'):'';",
+"var DEF=dispo?Math.min(dispo,300):300;",
+"var veut=parseInt(prompt('ImmoRadar : combien d\\'annonces importer ?'+libTot+'\\n(env. '+parPage+' par page ; ~1 s par page, soyez raisonnable pour ne pas etre bloque par Leboncoin)',DEF))||DEF;",
+"if(veut<parPage)veut=parPage;if(dispo&&veut>dispo)veut=dispo;if(veut>4000)veut=4000;",
+"var MAXP=Math.ceil(veut/parPage);if(MAXP<1)MAXP=1;if(MAXP>150)MAXP=150;",
 "var cur=(location.href.match(/[?&]page=(\\d+)/)||[])[1];cur=cur?parseInt(cur):1;",
 "var base=location.href.replace(/([?&])page=\\d+/,'$1').replace(/[?&]$/,'');",
 "var pages=[];for(var p=cur+1;p<cur+MAXP;p++)pages.push(p);",
@@ -115,9 +122,10 @@ var CODE = [
 "ov('ImmoRadar : lecture en cours… 1 page, '+all.length+' annonces');",
 "function suite(){",
 "if(i>=pages.length){envoyer();return;}",
+// ~1,2 s entre deux pages : assez lent pour ne pas re-declencher DataDome.
 "fetch(pageUrl(base,pages[i]),{credentials:'include'}).then(function(r){return r.ok?r.text():'';}).then(function(h){",
 "var ads=h?fromHtml(h):[];",
-"if(ads.length){all=all.concat(ads);parcourues++;i++;ov('ImmoRadar : lecture… '+parcourues+' pages, '+all.length+' annonces');setTimeout(suite,450);}else{envoyer();}",
+"if(ads.length){all=all.concat(ads);parcourues++;i++;ov('ImmoRadar : lecture… '+parcourues+' pages, '+all.length+' annonces');setTimeout(suite,1200);}else{envoyer();}",
 "}).catch(function(){envoyer();});}",
 "function envoyer(){",
 "ov('ImmoRadar : envoi de '+all.length+' annonces…');",
