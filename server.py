@@ -138,6 +138,7 @@ def api_import():
     from scrapers.common import annotate_import
 
     normalisees = [p for a in brutes if (p := _parse_api_ad(a))]
+    avec_desc = sum(1 for a in normalisees if (a.get("desc") or "").strip())
     kept, rejets, villes = [], {}, set()
     for a in normalisees:
         villes.add(a.get("ville") or "?")
@@ -159,6 +160,7 @@ def api_import():
         "ok": True,
         "recues": len(brutes),
         "lues": len(normalisees),
+        "avec_description": avec_desc,
         "retenues": len(kept),
         "nouvelles": len(new_ids),
         "rejets": rejets,               # {'sans_surface': 30, …}
@@ -193,6 +195,18 @@ def api_clear():
     _status["sources"] = {}
     _status["nouvelles"] = 0
     return jsonify({"ok": True})
+
+
+@app.route("/api/favori", methods=["POST"])
+def api_favori():
+    """Marque/démarque une annonce comme favori. Les favoris sont préservés
+    lors d'un « Vider »."""
+    data = request.get_json(force=True, silent=True) or {}
+    ad_id = data.get("id")
+    if not ad_id:
+        return jsonify({"ok": False, "erreur": "id manquant"}), 400
+    ok = storage.set_favori(ad_id, bool(data.get("favori")))
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/note", methods=["POST"])

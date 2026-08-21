@@ -40,7 +40,9 @@ def init_db():
         # Migration douce pour les bases créées avant ces colonnes.
         for col, ddl in (("note_statut", "TEXT DEFAULT ''"),
                          ("note_texte", "TEXT DEFAULT ''"),
-                         ("charges_mensuelles", "INTEGER")):
+                         ("charges_mensuelles", "INTEGER"),
+                         ("loyer_reel", "INTEGER"),
+                         ("favori", "INTEGER DEFAULT 0")):
             try:
                 conn.execute(f"ALTER TABLE annonces ADD COLUMN {col} {ddl}")
             except sqlite3.OperationalError:
@@ -49,9 +51,24 @@ def init_db():
 
 
 def clear_all():
+    """Vide la liste MAIS conserve les biens suivis : mis en favori, ou
+    annotés (statut ou note). Ils ne doivent pas disparaître quand on repart
+    sur de nouveaux critères."""
     with closing(get_conn()) as conn:
-        conn.execute("DELETE FROM annonces")
+        conn.execute("""
+            DELETE FROM annonces
+            WHERE COALESCE(favori,0)=0
+              AND COALESCE(note_statut,'')=''
+              AND COALESCE(note_texte,'')=''
+        """)
         conn.commit()
+
+
+def set_favori(ad_id, favori):
+    with closing(get_conn()) as conn:
+        cur = conn.execute("UPDATE annonces SET favori=? WHERE id=?", (1 if favori else 0, ad_id))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def set_note(ad_id, statut, texte):
@@ -79,13 +96,14 @@ def upsert_ads(ads):
                 conn.execute("""
                     INSERT INTO annonces
                         (id, source, titre, desc, prix, ville, surface, pieces, type_bien,
-                         charges_mensuelles, dpe, cp,
+                         charges_mensuelles, loyer_reel, dpe, cp,
                          lat, lon, distance_km, date_annonce, link, image, first_seen, last_seen)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     ad["id"], ad["source"], ad.get("titre", ""), ad.get("desc", ""),
                     ad.get("prix", 0), ad.get("ville", ""), ad.get("surface", 0), ad.get("pieces"),
-                    ad.get("type_bien", ""), ad.get("charges_mensuelles"), ad.get("dpe"), ad.get("cp", ""),
+                    ad.get("type_bien", ""), ad.get("charges_mensuelles"), ad.get("loyer_reel"),
+                    ad.get("dpe"), ad.get("cp", ""),
                     ad.get("lat"), ad.get("lon"), ad.get("distance_km"),
                     ad.get("date", ""), ad.get("link", ""), ad.get("image", ""),
                     now, now,

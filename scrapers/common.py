@@ -74,9 +74,10 @@ def annotate_import(ad):
     prix = ad.get("prix") or 0
     if prix <= 0:
         return "sans_prix"
-    surface = ad.get("surface") or 0
-    if surface <= 0:
-        return "sans_surface"
+    # On ne rejette PAS sur l'absence de surface : certains biens (résidences
+    # gérées / LMNP) n'ont pas de m² dans le titre, or on veut quand même les
+    # voir (marqués bail commercial). Le filtre « surface min » de l'app permet
+    # de les masquer au besoin.
     dist, precise = resolve_distance(ad)
     if dist is not None:
         ad["distance_km"] = round(dist, 1)

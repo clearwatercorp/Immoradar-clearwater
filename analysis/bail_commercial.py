@@ -28,6 +28,19 @@ MOTS_BAIL_COMMERCIAL = [
     "loué à l'exploitant", "loue a l'exploitant",
     "résidence de vacances", "residence de vacances",
     "résidence hôtelière", "residence hoteliere",
+    "lmnp",  # LMNP géré = quasi toujours sous bail commercial d'exploitant
+]
+
+# Noms d'exploitants de résidences gérées : souvent seuls présents dans le
+# TITRE (la description, elle, n'est pas toujours aspirée depuis la liste),
+# ils suffisent à reconnaître un bien sous bail commercial.
+EXPLOITANTS = [
+    "belambra", "pierre & vacances", "pierre et vacances", "pierre&vacances",
+    "odalys", "lagrange", "néméa", "nemea", "goélia", "goelia", "maeva",
+    "vacancéole", "vacanceole", "cerise", "zenitude", "terresens", "réside études",
+    "reside etudes", "les senioriales", "domitys", "les girandières", "les girandieres",
+    "cardinal campus", "nexity studea", "studea", "suitétudes", "suitetudes",
+    "appart'city", "appart city", "residhome", "residhotel", "resideal",
 ]
 
 # Un simple "loué" ou "bail en cours" ne suffit pas : ce sont des biens
@@ -74,6 +87,7 @@ def detect(titre="", desc="", prix=0):
     low = text.lower()
 
     signaux = [m for m in MOTS_BAIL_COMMERCIAL if m in low]
+    signaux += [e for e in EXPLOITANTS if e in low]
     if not signaux:
         return {"sous_bail_commercial": False}
 

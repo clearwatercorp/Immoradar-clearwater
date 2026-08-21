@@ -194,6 +194,7 @@
         <option value="contacte">Contacté</option>
         <option value="visite">Visité</option>
         <option value="interesse">Intéressé</option>
+        <option value="compromis">Sous compromis</option>
         <option value="ecarte">Écarté</option>
         <option value="__avec">Avec note</option>
       </select>
@@ -212,6 +213,10 @@
     <div class="filter-checkbox">
       <input type="checkbox" id="only-new"/>
       <label for="only-new">Nouveautés uniquement</label>
+    </div>
+    <div class="filter-checkbox">
+      <input type="checkbox" id="only-fav"/>
+      <label for="only-fav">⭐ Favoris uniquement</label>
     </div>
     <div class="filter-meta" id="filter-meta"></div>
   </div>
@@ -313,6 +318,7 @@ function parseAnnonce(raw){
     charges:   raw.charges_mensuelles || null,
     noteStatut:raw.note_statut || "",
     noteTexte: raw.note_texte || "",
+    favori:    !!raw.favori,
     loc:       raw.loc_saisonniere,
     marchand:  raw.marchand_biens,
   };
@@ -320,13 +326,14 @@ function parseAnnonce(raw){
 
 // ─── Statuts de suivi ─────────────────────────────────────────────────────
 const STATUTS = {
-  a_contacter:{label:"À contacter", color:"#ffb347"},
-  contacte:   {label:"Contacté",    color:"#4fc3f7"},
-  visite:     {label:"Visité",      color:"#a78bfa"},
-  interesse:  {label:"Intéressé",   color:"#00d68f"},
-  ecarte:     {label:"Écarté",      color:"#777"},
+  a_contacter:{label:"À contacter",   color:"#ffb347"},
+  contacte:   {label:"Contacté",      color:"#4fc3f7"},
+  visite:     {label:"Visité",        color:"#a78bfa"},
+  interesse:  {label:"Intéressé",     color:"#00d68f"},
+  compromis:  {label:"Sous compromis",color:"#00d68f"},
+  ecarte:     {label:"Écarté",        color:"#777"},
 };
-const STATUT_ORDER = {a_contacter:0, interesse:1, contacte:2, visite:3, "":4, ecarte:5};
+const STATUT_ORDER = {compromis:0, a_contacter:1, interesse:2, contacte:3, visite:4, "":5, ecarte:6};
 
 function fmtDatePub(s){
   if(!s) return "";
@@ -444,6 +451,7 @@ function getFiltered(){
   const sMin  = parseInt(document.getElementById("surface-min").value)||0;
   const typeF = document.getElementById("type-bien").value;
   const onlyNew = document.getElementById("only-new").checked;
+  const onlyFav = document.getElementById("only-fav").checked;
   const q     = document.getElementById("search-input").value.toLowerCase();
 
   const statutF = document.getElementById("filtre-statut").value;
@@ -454,6 +462,7 @@ function getFiltered(){
     if(a.surface>0 && a.surface<sMin) return false;
     if(typeF && a.typeBien!==typeF) return false;
     if(onlyNew && !a.nouveau) return false;
+    if(onlyFav && !a.favori) return false;
     if(statutF==="__avec" ? !a.noteStatut : (statutF && a.noteStatut!==statutF)) return false;
     if(q && !a.titre.toLowerCase().includes(q) && !a.ville.toLowerCase().includes(q)) return false;
     if(activeTab!=="tous" && a.source!==activeTab) return false;
@@ -560,6 +569,9 @@ function cfTipMarchand(m){
   return parts.join("  ") + `  =  ${fmtSigned(m.cashflow_locatif_mensuel)}/mois`;
 }
 
+function favBtn(a){
+  return `<span class="fav-btn" data-fav-id="${esc(a.id)}" title="${a.favori?'Retirer des favoris':'Ajouter aux favoris (conservé même après Vider)'}" style="cursor:pointer;font-size:15px;user-select:none">${a.favori?'⭐':'☆'}</span>`;
+}
 function renderCardLoc(a){
   const exp = expandedId===a.id;
   const l = a.loc;
@@ -568,6 +580,7 @@ function renderCardLoc(a){
     <div class="card-header">
       <div style="flex:1;min-width:0">
         <div class="card-meta">
+          ${favBtn(a)}
           ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
           ${statutBadge(a.noteStatut)}
           ${l?eligibiliteBadge(l.eligibilite):""}
@@ -635,6 +648,7 @@ function renderCardMarchand(a){
     <div class="card-header">
       <div style="flex:1;min-width:0">
         <div class="card-meta">
+          ${favBtn(a)}
           ${a.nouveau?'<span class="badge badge-nouveau"><span class="new-dot"></span>NOUVEAU</span>':""}
           ${statutBadge(a.noteStatut)}
           ${m?verdictBadge(m.verdict):""}
@@ -745,6 +759,20 @@ document.getElementById("tabs").addEventListener("click", e=>{
 });
 
 document.getElementById("annonces-list").addEventListener("click", e=>{
+  // Clic sur l'étoile favori.
+  const fav = e.target.closest(".fav-btn");
+  if(fav){
+    e.stopPropagation();
+    const id = fav.dataset.favId;
+    const a = allAnnonces.find(x=>x.id===id);
+    if(a){
+      a.favori = !a.favori;
+      fetch("/api/favori",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id, favori:a.favori})}).catch(()=>{});
+      renderAll();
+    }
+    return;
+  }
   // Ne pas replier la carte quand on interagit avec le bloc note ou le lien.
   if(e.target.closest(".note-block") || e.target.closest(".btn-annonce")) return;
   const card = e.target.closest(".card");
@@ -774,7 +802,7 @@ document.getElementById("annonces-list").addEventListener("input", e=>{
   }
 });
 
-["prix-max","surface-min","only-new","type-bien","filtre-statut","tri"].forEach(id=>{
+["prix-max","surface-min","only-new","only-fav","type-bien","filtre-statut","tri"].forEach(id=>{
   document.getElementById(id).addEventListener("input", renderAll);
   document.getElementById(id).addEventListener("change", renderAll);
 });
@@ -783,13 +811,13 @@ document.getElementById("btn-refresh").addEventListener("click", lancerRecherche
 
 document.getElementById("btn-clear").addEventListener("click", async ()=>{
   const n = allAnnonces.length;
-  if(!confirm(`Effacer les ${n} annonce(s) et repartir de zéro ?\n(Vos notes seront également supprimées.)`)) return;
+  const favs = allAnnonces.filter(a=>a.favori).length;
+  const suffixe = favs ? `\nVos ${favs} favori(s) ⭐ seront conservés.` : "";
+  if(!confirm(`Effacer les ${n} annonce(s) et repartir de zéro ?${suffixe}`)) return;
   try{
     await fetch("/api/clear", {method:"POST"});
-    allAnnonces = [];
     expandedId = null;
-    document.getElementById("sources-info").style.display="none";
-    renderAll();
+    await loadAnnonces();   // recharge : les favoris conservés réapparaissent
   }catch(e){ alert("Erreur lors de l'effacement : "+e.message); }
 });
 

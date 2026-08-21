@@ -52,6 +52,10 @@ def evaluate(ad):
         loyer_classique_mensuel = bail.get("loyer_mensuel") or 0
         loyer_source = "loyer annoncé dans l'annonce (bail commercial)" if loyer_classique_mensuel \
             else "loyer non mentionné dans l'annonce — à demander"
+    elif ad.get("loyer_reel"):
+        # Bien déjà loué / loyer indiqué : le vrai loyer prime sur l'estimation.
+        loyer_classique_mensuel = ad["loyer_reel"]
+        loyer_source = "loyer actuel indiqué dans l'annonce"
     else:
         loyer_classique_mensuel = round(loyer_mensuel_estime(surface, ref))
         loyer_source = "estimation marché local"

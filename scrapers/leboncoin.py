@@ -272,7 +272,10 @@ import re as _re
 
 def _to_int(v):
     try:
-        return int(float(str(v).replace(",", ".")))
+        # Espaces (y compris insécables) = séparateurs de milliers en français ;
+        # virgule = séparateur décimal. « 7 800 » → 7800, « 45,5 » → 45.
+        s = str(v).replace(" ", "").replace(" ", "").replace(" ", "").replace(",", ".")
+        return int(float(s))
     except (TypeError, ValueError):
         return 0
 
@@ -317,6 +320,31 @@ def _extract_charges_mensuelles(titre, desc):
             return montant
         # Périodicité non précisée : un gros montant est presque toujours annuel.
         return round(montant / 12) if montant >= 600 else montant
+    return None
+
+
+# Loyer réel mentionné (bien déjà loué, ou loyer annoncé par le vendeur).
+# Ex. « locataire en place avec un loyer hors charge de 420 € », « loué 650€/mois ».
+_LOYER_RE = _re.compile(
+    r"(?:loyer|lou[ée]e?s?)[^.\n€]{0,35}?(\d[\d\s.,]{1,7})\s*€\s*(/?\s*mois|par\s+mois|/?\s*an|annuel|hors\s+charge)?",
+    _re.I,
+)
+
+
+def _extract_loyer_reel(titre, desc):
+    """Loyer mensuel réel indiqué dans l'annonce (à utiliser plutôt que
+    l'estimation de marché), ou None. Ignore les mentions sans montant."""
+    texte = f"{titre or ''} {desc or ''}"
+    for m in _LOYER_RE.finditer(texte):
+        montant = _to_int(m.group(1))
+        if montant < 100:
+            continue  # trop faible pour un loyer mensuel plausible
+        unite = (m.group(2) or "").lower()
+        if "an" in unite and "mois" not in unite:
+            return round(montant / 12)
+        if montant > 5000:        # sans périodicité mais gros montant = annuel
+            return round(montant / 12)
+        return montant
     return None
 
 
@@ -427,6 +455,7 @@ def _parse_api_ad(ad):
             "pieces":    pieces,
             "type_bien": type_bien,
             "charges_mensuelles": _extract_charges_mensuelles(titre, desc),
+            "loyer_reel":          _extract_loyer_reel(titre, desc),
             "dpe":       dpe,
             "lat":       lat,
             "lon":       lon,

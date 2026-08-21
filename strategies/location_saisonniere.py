@@ -67,7 +67,12 @@ def evaluate(ad):
         }
 
     ref = get_reference(ville)
-    loyer_etudiant_mensuel = round(loyer_mensuel_estime(surface, ref) * MULTIPLICATEUR_LOYER_ETUDIANT)
+    # Loyer réel indiqué dans l'annonce (locataire en place) : il prime sur
+    # l'estimation pour la part longue durée / bail étudiant.
+    if ad.get("loyer_reel"):
+        loyer_etudiant_mensuel = ad["loyer_reel"]
+    else:
+        loyer_etudiant_mensuel = round(loyer_mensuel_estime(surface, ref) * MULTIPLICATEUR_LOYER_ETUDIANT)
     airbnb_nuit = round(airbnb_nuit_estimee(surface, ref))
     revenu_airbnb_mensuel = round(airbnb_nuit * 30 * TAUX_OCCUPATION_AIRBNB)
 
