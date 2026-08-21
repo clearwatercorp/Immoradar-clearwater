@@ -55,7 +55,7 @@
       <span class="sub">Vous pouvez affiner les critères directement sur Leboncoin : le favori récupère ce qui est affiché.</span>
     </div></div>
     <div class="step"><div class="num">4</div><div class="step-body">
-      Sur la page de <strong>résultats</strong> Leboncoin, cliquez le favori <em>« 📡 Envoyer vers ImmoRadar »</em>. Il vous demande <strong>combien d'annonces importer</strong> (il affiche le total disponible) puis parcourt les pages suivantes tout seul, lentement, pour ne pas être bloqué. Un message confirme le nombre d'annonces envoyées.
+      Sur la page de <strong>résultats</strong> Leboncoin, cliquez le favori <em>« 📡 Envoyer vers ImmoRadar »</em>. Il vous demande <strong>combien d'annonces importer</strong> (il affiche le total disponible) puis parcourt les pages suivantes tout seul, lentement, pour ne pas être bloqué — <strong>15 pages au maximum</strong>, car les annonces les plus récentes sont en tête de liste. Un message confirme le nombre d'annonces envoyées.
     </div></div>
     <div class="step"><div class="num">5</div><div class="step-body">
       Revenez sur <a class="plain" href="/">ImmoRadar</a> : vos annonces sont là, analysées selon les 2 stratégies.
@@ -109,12 +109,15 @@ var CODE = [
 "var all=d?F(d):[];",
 "if(!all.length){alert('ImmoRadar : aucune annonce sur cette page. Ouvrez une page de RESULTATS de recherche Leboncoin, puis recliquez.');return;}",
 "var parPage=all.length;",                 // nb d'annonces reellement sur la page 1
+"var PMAX=15;",                            // on ne parcourt jamais + de 15 pages (les + recentes sont en tete)
 "var dispo=d?total(d):0;",                  // total annonces de la recherche
+"var plafond=parPage*PMAX;",               // ~15 pages d'annonces au maximum
+"if(dispo&&dispo<plafond)plafond=dispo;",
 "var libTot=dispo?(' sur '+dispo+' au total'):'';",
-"var DEF=dispo?Math.min(dispo,300):300;",
-"var veut=parseInt(prompt('ImmoRadar : combien d\\'annonces importer ?'+libTot+'\\n(env. '+parPage+' par page ; ~1 s par page, soyez raisonnable pour ne pas etre bloque par Leboncoin)',DEF))||DEF;",
-"if(veut<parPage)veut=parPage;if(dispo&&veut>dispo)veut=dispo;if(veut>4000)veut=4000;",
-"var MAXP=Math.ceil(veut/parPage);if(MAXP<1)MAXP=1;if(MAXP>150)MAXP=150;",
+"var DEF=plafond;",                         // par defaut : le maximum autorise (15 pages)
+"var veut=parseInt(prompt('ImmoRadar : combien d\\'annonces importer ?'+libTot+'\\n(env. '+parPage+' par page, 15 pages max ; ~1 s par page)',DEF))||DEF;",
+"if(veut<parPage)veut=parPage;if(veut>plafond)veut=plafond;",
+"var MAXP=Math.ceil(veut/parPage);if(MAXP<1)MAXP=1;if(MAXP>PMAX)MAXP=PMAX;",
 "var cur=(location.href.match(/[?&]page=(\\d+)/)||[])[1];cur=cur?parseInt(cur):1;",
 "var base=location.href.replace(/([?&])page=\\d+/,'$1').replace(/[?&]$/,'');",
 "var pages=[];for(var p=cur+1;p<cur+MAXP;p++)pages.push(p);",
