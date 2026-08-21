@@ -151,6 +151,9 @@
     </div>
     <input class="search-input" id="search-input" placeholder="Ville, titre…"/>
     <a class="btn-refresh" href="/bookmarklet" style="text-decoration:none" title="Récupérer Leboncoin gratuitement depuis votre navigateur">🔖 Leboncoin</a>
+    <button class="btn-refresh" id="btn-export" title="Télécharger vos favoris et notes (sauvegarde durable, indépendante du serveur)">⬇️ Exporter</button>
+    <button class="btn-refresh" id="btn-import" title="Recharger un fichier de favoris/notes exporté précédemment">⬆️ Importer</button>
+    <input type="file" id="import-file" accept="application/json,.json" style="display:none"/>
     <button class="btn-refresh" id="btn-clear" title="Effacer toutes les annonces pour repartir sur de nouveaux critères" style="background:#2a1616;border-color:#5a2a2a;color:#ff9a9a">🗑️ Vider</button>
     <button class="btn-refresh" id="btn-refresh">⟳ Rechercher</button>
   </div>
@@ -963,6 +966,45 @@ document.getElementById("btn-clear").addEventListener("click", async ()=>{
     expandedId = null;
     await loadAnnonces();   // recharge : les favoris conservés réapparaissent
   }catch(e){ alert("Erreur lors de l'effacement : "+e.message); }
+});
+
+// ── Export / import des biens suivis (favoris + notes) ─────────────────────
+document.getElementById("btn-export").addEventListener("click", async ()=>{
+  try{
+    const res = await fetch("/api/export");
+    const data = await res.json();
+    if(!data.count){ alert("Aucun favori ni note à exporter pour l'instant."); return; }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const jour = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `immoradar-favoris-${jour}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){ alert("Erreur à l'export : "+e.message); }
+});
+
+document.getElementById("btn-import").addEventListener("click", ()=>{
+  document.getElementById("import-file").click();
+});
+document.getElementById("import-file").addEventListener("change", async (e)=>{
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";              // permet de réimporter le même fichier plus tard
+  if(!file) return;
+  try{
+    const txt = await file.text();
+    const data = JSON.parse(txt);
+    const items = Array.isArray(data) ? data : data.items;
+    if(!Array.isArray(items) || !items.length){ alert("Fichier vide ou invalide."); return; }
+    const res = await fetch("/api/import-favoris", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({items})
+    });
+    const j = await res.json();
+    if(!j.ok){ alert("Import refusé : "+(j.erreur||"format invalide")); return; }
+    await loadAnnonces();
+    alert(`${j.importes} bien(s) suivi(s) réimporté(s). Vos favoris et notes sont de retour.`);
+  }catch(err){ alert("Erreur à l'import : "+err.message); }
 });
 
 document.querySelectorAll(".view-toggle button").forEach(btn=>{

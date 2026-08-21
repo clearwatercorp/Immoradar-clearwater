@@ -117,3 +117,57 @@ def get_all_ads():
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM annonces ORDER BY first_seen DESC").fetchall()
         return [dict(r) for r in rows]
+
+
+# Colonnes exportées/réimportées (tout sauf les timestamps techniques, qu'on
+# régénère à l'import).
+_EXPORT_COLS = [
+    "id", "source", "titre", "desc", "prix", "ville", "surface", "pieces",
+    "type_bien", "charges_mensuelles", "loyer_reel", "dpe", "cp", "lat", "lon",
+    "distance_km", "date_annonce", "link", "image",
+    "note_statut", "note_texte", "favori",
+]
+
+
+def export_saved():
+    """Biens SUIVIS (favori ou annotés) avec toutes leurs données, pour une
+    sauvegarde hors-ligne que l'utilisateur peut réimporter plus tard."""
+    with closing(get_conn()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT * FROM annonces
+            WHERE COALESCE(favori,0)=1
+               OR COALESCE(note_statut,'')<>''
+               OR COALESCE(note_texte,'')<>''
+            ORDER BY first_seen DESC
+        """).fetchall()
+        return [{k: r[k] for k in _EXPORT_COLS if k in r.keys()} for r in rows]
+
+
+def import_saved(items):
+    """Réinjecte des biens suivis exportés. Insère le bien s'il est absent,
+    sinon ne met à jour QUE le favori et la note (on préserve les données de
+    marché fraîches déjà présentes). Retourne le nombre traité."""
+    now = time.time()
+    n = 0
+    cols = _EXPORT_COLS + ["first_seen", "last_seen"]
+    placeholders = ",".join("?" for _ in cols)
+    sql = f"""
+        INSERT INTO annonces ({",".join(cols)}) VALUES ({placeholders})
+        ON CONFLICT(id) DO UPDATE SET
+            favori      = excluded.favori,
+            note_statut = excluded.note_statut,
+            note_texte  = excluded.note_texte
+    """
+    with closing(get_conn()) as conn:
+        for it in items or []:
+            if not isinstance(it, dict) or not it.get("id"):
+                continue
+            vals = [it.get(c) for c in _EXPORT_COLS] + [now, now]
+            try:
+                conn.execute(sql, vals)
+                n += 1
+            except sqlite3.Error:
+                pass
+        conn.commit()
+    return n

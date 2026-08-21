@@ -240,6 +240,34 @@ def api_note():
     return jsonify({"ok": ok})
 
 
+@app.route("/api/export")
+def api_export():
+    """Sauvegarde hors-ligne des biens suivis (favoris + notes) : un fichier
+    JSON que l'utilisateur télécharge, indépendant du disque éphémère de
+    l'hébergeur."""
+    items = storage.export_saved()
+    resp = jsonify({
+        "version": 1,
+        "type": "immoradar-favoris",
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "count": len(items),
+        "items": items,
+    })
+    resp.headers["Content-Disposition"] = "attachment; filename=immoradar-favoris.json"
+    return resp
+
+
+@app.route("/api/import-favoris", methods=["POST"])
+def api_import_favoris():
+    """Réinjecte un fichier de favoris/notes précédemment exporté."""
+    data = request.get_json(force=True, silent=True) or {}
+    items = data.get("items") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "erreur": "format invalide (items manquant)"}), 400
+    n = storage.import_saved(items)
+    return jsonify({"ok": True, "importes": n})
+
+
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
     """Déclenche une recherche à la demande, sans bloquer la requête HTTP
