@@ -340,8 +340,19 @@ def _extract_loyer_reel(titre, desc):
         if montant < 100:
             continue  # trop faible pour un loyer mensuel plausible
         unite = (m.group(2) or "").lower()
-        if "an" in unite and "mois" not in unite:
+        # La périodicité peut être annoncée APRÈS le montant (« 4 800 €/an »,
+        # capturé dans unite) mais aussi AVANT (« loyer ANNUEL garanti : 4 936 € »).
+        # On regarde donc tout le fragment apparié pour ne pas prendre un loyer
+        # annuel pour un loyer mensuel. (« an » nu est proscrit : il apparaît
+        # dans « garanti », « an-née »…, d'où des marqueurs explicites.)
+        matched = m.group(0).lower()
+        mensuel = "mois" in unite or "mensuel" in matched or "/mois" in matched
+        annuel = (("an" in unite and "mois" not in unite)
+                  or "annuel" in matched or "/an" in matched or "par an" in matched)
+        if annuel and not mensuel:
             return round(montant / 12)
+        if mensuel:
+            return montant
         if montant > 5000:        # sans périodicité mais gros montant = annuel
             return round(montant / 12)
         return montant

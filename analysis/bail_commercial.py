@@ -13,6 +13,15 @@ dans le texte.
 """
 
 import re
+import unicodedata
+
+
+def _fold(s):
+    """Minuscule sans accents, pour comparer « Studéa » à « studea »,
+    « Résidence étudiante » à « residence etudiante », etc."""
+    s = unicodedata.normalize("NFKD", (s or "").lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
 
 # Termes qui impliquent un bail commercial / une gestion par exploitant.
 MOTS_BAIL_COMMERCIAL = [
@@ -84,10 +93,11 @@ def detect(titre="", desc="", prix=0):
     s'appliquent. True = l'acquéreur n'a pas la main sur le bail.
     """
     text = f"{titre or ''} {desc or ''}"
-    low = text.lower()
+    low = _fold(text)
 
-    signaux = [m for m in MOTS_BAIL_COMMERCIAL if m in low]
-    signaux += [e for e in EXPLOITANTS if e in low]
+    # Comparaison sans accents des deux côtés (« Studéa » ↔ « studea »).
+    signaux = [m for m in MOTS_BAIL_COMMERCIAL if _fold(m) in low]
+    signaux += [e for e in EXPLOITANTS if _fold(e) in low]
     if not signaux:
         return {"sous_bail_commercial": False}
 
