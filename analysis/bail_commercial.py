@@ -55,22 +55,25 @@ EXPLOITANTS = [
 # Un simple "loué" ou "bail en cours" ne suffit pas : ce sont des biens
 # classiques occupés, où l'on récupère la main au terme du bail.
 
-# Montants : on cherche le loyer annoncé et sa périodicité.
+# Montants : on cherche le loyer annoncé et sa périodicité. Le montant peut
+# être suivi du symbole « € » comme du mot « euros » (fréquent sur ces
+# annonces : « 2497,36 euros HT »).
 _MONTANT = r"(\d[\d\s.,]{1,12})"
+_EUR = r"(?:€|euros?|eur\b)"
 
 PATTERNS_LOYER = [
-    # « loyer annuel de 4 800 € », « loyer annuel : 4800€ HT »
-    (re.compile(rf"loyers?\s+annuels?[^\d€]{{0,25}}{_MONTANT}\s*€", re.I), "an"),
-    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*€\s*(?:HT\s*)?(?:/|par\s+)an", re.I), "an"),
-    (re.compile(rf"{_MONTANT}\s*€\s*(?:HT\s*)?(?:/|par\s+)an", re.I), "an"),
+    # « loyer annuel de 4 800 € », « loyers annuels : 2497,36 euros HT »
+    (re.compile(rf"loyers?\s+annuel\w*[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}", re.I), "an"),
+    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}\s*(?:HT\s*)?(?:/|par\s+)an", re.I), "an"),
+    (re.compile(rf"{_MONTANT}\s*{_EUR}\s*(?:HT\s*)?(?:/|par\s+)an", re.I), "an"),
     # « loyer mensuel de 400 € », « loyer : 400 €/mois »
-    (re.compile(rf"loyers?\s+mensuels?[^\d€]{{0,25}}{_MONTANT}\s*€", re.I), "mois"),
-    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*€\s*(?:HT\s*)?(?:/|par\s+)mois", re.I), "mois"),
-    (re.compile(rf"{_MONTANT}\s*€\s*(?:HT\s*)?(?:/|par\s+)mois", re.I), "mois"),
+    (re.compile(rf"loyers?\s+mensuel\w*[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}", re.I), "mois"),
+    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}\s*(?:HT\s*)?(?:/|par\s+)mois", re.I), "mois"),
+    (re.compile(rf"{_MONTANT}\s*{_EUR}\s*(?:HT\s*)?(?:/|par\s+)mois", re.I), "mois"),
     # « loyer trimestriel de 1 200 € »
-    (re.compile(rf"loyers?\s+trimestriels?[^\d€]{{0,25}}{_MONTANT}\s*€", re.I), "trimestre"),
+    (re.compile(rf"loyers?\s+trimestriel\w*[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}", re.I), "trimestre"),
     # Dernier recours : « loyer de 4 800 € » sans périodicité explicite
-    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*€", re.I), "inconnu"),
+    (re.compile(rf"loyers?[^\d€]{{0,25}}{_MONTANT}\s*{_EUR}", re.I), "inconnu"),
 ]
 
 PATTERN_RENTABILITE = re.compile(r"rentabilit[ée][^\d]{0,20}(\d{1,2}[.,]?\d{0,2})\s*%", re.I)
@@ -79,11 +82,13 @@ DIVISEUR = {"an": 12, "trimestre": 3, "mois": 1}
 
 
 def _to_number(txt):
-    """Convertit « 4 800 », « 4.800 », « 4,800 » en entier. Les séparateurs
-    (espace, point, virgule) sont ici des séparateurs de milliers : les
-    loyers annoncés sont toujours en euros entiers."""
-    cleaned = re.sub(r"[^\d]", "", txt or "")
-    return int(cleaned) if cleaned else 0
+    """Convertit un montant français en entier d'euros. Gère les milliers
+    (« 4 800 », « 4.800 ») ET la décimale (« 2497,36 » → 2497, « 45,5 » → 45)
+    sans confondre les deux — sinon « 2497,36 » deviendrait 249 736."""
+    s = re.sub(r"\s", "", txt or "")        # milliers séparés par une espace
+    s = re.sub(r"[.,]\d{1,2}$", "", s)      # décimale finale (1-2 chiffres) tronquée
+    s = re.sub(r"[^\d]", "", s)             # milliers restants (point/virgule)
+    return int(s) if s else 0
 
 
 def detect(titre="", desc="", prix=0):

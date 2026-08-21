@@ -148,7 +148,10 @@ var CODE = [
 "function fiche(){",
 "if(j>=uniq.length){envoyer();return;}",
 "var a=uniq[j];var u=adUrl(a);",
-"if(a.body||!u){j++;ov('ImmoRadar : lecture des fiches… '+j+'/'+uniq.length);setTimeout(fiche,0);return;}",
+// On va chercher la fiche SAUF si on a deja une description consequente
+// (> 400 car.) : la liste ne fournit souvent qu'un extrait tronque, or
+// charges / loyer / bail sont plus bas dans le texte complet.
+"if((a.body&&a.body.length>400)||!u){j++;ov('ImmoRadar : lecture des fiches… '+j+'/'+uniq.length);setTimeout(fiche,0);return;}",
 "ov('ImmoRadar : lecture des fiches… '+(j+1)+'/'+uniq.length);",
 "fetch(u,{credentials:'include'}).then(function(r){return r.ok?r.text():'';}).then(function(h){",
 "var b=h?bodyFromHtml(h):'';if(b)a.body=b;j++;setTimeout(fiche,1200);",

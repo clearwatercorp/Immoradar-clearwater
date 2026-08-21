@@ -321,8 +321,10 @@ def _periode_diviseur(fragment, defaut_annuel_si_gros=None):
 # en EXCLUANT l'énergie (« dépenses annuelles d'énergie » du DPE) et les
 # tournures où « charges » qualifie un LOYER (« hors charges », « charges
 # comprises ») — là le montant est un loyer, pas des charges de copro.
+# Le montant peut être suivi de « € » ou du mot « euros » (« 762 euros »).
+_EUR = r"(?:€|euros?|eur\b)"
 _CHARGES_RE = _re.compile(
-    r"charges?[^.\n€]{0,70}?(\d[\d\s.,]{0,9}\d|\d)\s*€\s*"
+    rf"charges?[^.\n€]{{0,70}}?(\d[\d\s.,]{{0,9}}\d|\d)\s*{_EUR}\s*"
     r"(par\s+an|/\s*an|annuel\w*|par\s+trimestre|trimestriel\w*|par\s+mois|/\s*mois|mensuel\w*)?",
     _re.I,
 )
@@ -363,7 +365,7 @@ _LOYER_RE = _re.compile(
     r"(?:lou[ée]e?s?|locataires?|loyers?\s+(?:actuel\w*|per[çc]u\w*|mensuel\w*|annuel\w*|"
     r"garanti\w*|en\s+cours|net\w*|hors\s+charges?)|revenus?\s+locatifs?|rapporte\w*|"
     r"bail\s+en\s+cours|d[ée]j[àa]\s+lou[ée])"
-    r"[^.\n€]{0,45}?(\d[\d\s.,]{1,7})\s*€\s*"
+    rf"[^.\n€]{{0,45}}?(\d[\d\s.,]{{1,7}})\s*{_EUR}\s*"
     r"(/?\s*mois|par\s+mois|mensuel\w*|/?\s*an|annuel\w*|par\s+an|hors\s+charges?|cc)?",
     _re.I,
 )
