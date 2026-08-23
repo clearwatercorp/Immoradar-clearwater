@@ -96,14 +96,47 @@ def evaluate(ad, marche=None):
             "cashflow_mensuel_moyen": revenu_mensuel_moyen - mensualite - charges,
         }
 
-    # Part longue durée (bail étudiant). Loyer réel s'il est indiqué, sinon
-    # estimation pondérée par l'attractivité.
+    # Bien DÉJÀ LOUÉ (locataire en place, loyer indiqué) : on ne peut pas faire
+    # d'Airbnb l'été, le logement est occupé. On compte le loyer réel sur 12
+    # mois — pas de stratégie saisonnière hybride tant que le bail court.
     if ad.get("loyer_reel"):
-        loyer_etudiant_mensuel = ad["loyer_reel"]
-        loyer_source = "loyer indiqué dans l'annonce"
-    else:
-        loyer_etudiant_mensuel = round(loyer_mensuel_estime(surface, ref, mult) * MULTIPLICATEUR_LOYER_ETUDIANT)
-        loyer_source = "estimation marché pondérée (attractivité)"
+        loyer_reel = ad["loyer_reel"]
+        revenu_annuel = loyer_reel * 12
+        revenu_mensuel_moyen = loyer_reel
+        rendement_brut = round(revenu_annuel / investissement * 100, 1) if investissement > 0 else 0
+        if surface and surface <= LOCATION_SAISONNIERE_SURFACE_MAX and (not pieces or pieces <= 2):
+            elig = "bonne"
+        elif surface and surface <= LOCATION_SAISONNIERE_SURFACE_MAX * 1.4:
+            elig = "limitee"
+        else:
+            elig = "peu_adaptee"
+        return {
+            "eligibilite": elig,
+            "deja_loue": True,
+            "bail_commercial": bail,
+            "condition": condition,
+            "attractivite": attr,
+            "cout_travaux": cout_travaux,
+            "frais_notaire": acquisition["frais_notaire"],
+            "investissement_total": investissement,
+            "apport": acquisition["apport"],
+            "mensualite_credit": mensualite,
+            "loyer_etudiant_mensuel": loyer_reel,
+            "loyer_source": "loyer réel — bien déjà loué (pas d'Airbnb possible tant que le bail court)",
+            "airbnb_nuit_estime": None,
+            "airbnb_revenu_mensuel_ete": None,
+            "revenu_annuel_estime": revenu_annuel,
+            "revenu_mensuel_moyen": revenu_mensuel_moyen,
+            "rendement_brut_pct": rendement_brut,
+            "charges_mensuelles": ad.get("charges_mensuelles"),
+            "charges_non_recup": charges,
+            "cashflow_mensuel_moyen": revenu_mensuel_moyen - mensualite - charges,
+        }
+
+    # Sinon (bien libre ou libérable) : hybride bail étudiant + Airbnb été.
+    # Estimation pondérée par l'attractivité.
+    loyer_etudiant_mensuel = round(loyer_mensuel_estime(surface, ref, mult) * MULTIPLICATEUR_LOYER_ETUDIANT)
+    loyer_source = "estimation marché pondérée (attractivité)"
 
     # Part Airbnb été, NETTE de frais (conciergerie/ménage/plateforme).
     airbnb_nuit = airbnb_nuit_estimee(surface, ref, mult)

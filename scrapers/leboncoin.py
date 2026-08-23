@@ -381,24 +381,40 @@ _LOYER_ESTIME = ("estimation", "estimé", "estime", "potentiel", "de marché", "
                  "peut être lou", "peut etre lou", "à prévoir", "a prevoir")
 
 
-def _extract_loyer_reel(titre, desc):
+def _extract_loyer_reel(titre, desc, prix=0):
     """Loyer mensuel réel indiqué dans l'annonce (bien occupé / loyer garanti),
-    à utiliser plutôt que l'estimation de marché, ou None. On écarte les
-    montants présentés comme de simples estimations."""
+    à utiliser plutôt que l'estimation de marché, ou None.
+
+    Robustesse : on écarte les estimations, on REJETTE tout montant proche du
+    prix de vente (un ancrage « LOUE … 268 000 € » ne doit pas être pris pour
+    un loyer), et on PRÉFÈRE les montants explicitement étiquetés « loyer … »
+    (ex. « Loyer hors charges : 759 € ») à un simple « loué » suivi d'un
+    montant lointain."""
     texte = f"{titre or ''} {desc or ''}"
+    seuil_prix = (prix or 0) * 0.5   # un loyer (mensuel ou annuel) n'est jamais la moitié du prix
+    meilleur = None      # (score, valeur_mensuelle)
     for m in _LOYER_RE.finditer(texte):
         montant = _to_int(m.group(1))
         if montant < 100:
-            continue  # trop faible pour un loyer mensuel plausible
+            continue
+        if seuil_prix and montant >= seuil_prix:
+            continue  # c'est le prix de vente (ou un autre gros montant), pas un loyer
         contexte = texte[max(0, m.start() - 30):m.end() + 5].lower()
         if any(mot in contexte for mot in _LOYER_ESTIME):
-            continue  # c'est une estimation, pas un loyer effectif
+            continue  # estimation, pas un loyer effectif
         div = _periode_diviseur(m.group(0))
         if div is None:
-            # Sans périodicité : un gros montant est un loyer annuel.
             div = 12 if montant > 5000 else 1
-        return round(montant / div)
-    return None
+        valeur = round(montant / div)
+        if valeur < 100 or valeur > 8000:
+            continue  # loyer mensuel implausible (garde-fou)
+        # Un libellé « loyer … » est bien plus fiable qu'un simple « loué ».
+        score = 2 if "loyer" in m.group(0).lower() else 1
+        if meilleur is None or score > meilleur[0]:
+            meilleur = (score, valeur)
+        if score == 2:
+            break  # étiquette explicite : on ne cherche pas mieux
+    return meilleur[1] if meilleur else None
 
 
 def _extract_surface(titre, desc, attrs):
@@ -508,7 +524,7 @@ def _parse_api_ad(ad):
             "pieces":    pieces,
             "type_bien": type_bien,
             "charges_mensuelles": _extract_charges_mensuelles(titre, desc),
-            "loyer_reel":          _extract_loyer_reel(titre, desc),
+            "loyer_reel":          _extract_loyer_reel(titre, desc, prix),
             "dpe":       dpe,
             "lat":       lat,
             "lon":       lon,

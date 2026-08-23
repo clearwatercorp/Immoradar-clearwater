@@ -711,6 +711,14 @@ function renderCardLoc(a){
       ${statPill((l.loyer_source||"").indexOf("estimation")===0?"Loyer estimé":"Loyer exploitant", l.revenu_mensuel_moyen?fmtEuro(l.revenu_mensuel_moyen)+"/mois":"non précisé", "bad", l.loyer_source?esc(l.loyer_source):"")}
       ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
     </div>`
+    : l && l.deja_loue?`
+    <div class="stats-row">
+      ${statPill("Rendement brut", l.rendement_brut_pct+"%", l.rendement_brut_pct>=7?"good":"")}
+      ${statPill("Cash-flow/mois", fmtSigned(l.cashflow_mensuel_moyen), l.cashflow_mensuel_moyen>=0?"good":"bad", cfTipLoc(l))}
+      ${statPill("Loyer actuel", fmtEuro(l.loyer_etudiant_mensuel)+"/mois", false, "Bien déjà loué : loyer réel du bail en cours, pas d'Airbnb possible")}
+      ${statPill("Statut", "🔒 déjà loué", false, "Airbnb impossible tant que le locataire est en place")}
+      ${statPill("Travaux estimés", fmtEuro(l.cout_travaux), false)}
+    </div>`
     : l?`
     <div class="stats-row">
       ${statPill("Rendement brut", l.rendement_brut_pct+"%", l.rendement_brut_pct>=7?"good":"")}
@@ -735,7 +743,9 @@ function renderCardLoc(a){
       ${l?`<div class="detail-note">
         Investissement total (achat + notaire + travaux) : <strong>${fmtEuro(l.investissement_total)}</strong>
         (apport ${fmtEuro(l.apport)}, mensualité crédit ${fmtEuro(l.mensualite_credit)}).
-        ${l.eligibilite!=="bail_commercial"
+        ${l.deja_loue
+          ? `Revenu annuel : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong> — loyer réel ${fmtEuro(l.loyer_etudiant_mensuel)}/mois × 12 (bien déjà loué : pas d'Airbnb tant que le bail court).`
+          : l.eligibilite!=="bail_commercial"
           ? `Revenu annuel estimé : <strong>${fmtEuro(l.revenu_annuel_estime)}</strong> —
              ${l.lease_etudiant_mois||8} mois de bail à ${fmtEuro(l.loyer_etudiant_mensuel)}/mois
              + ${l.airbnb_mois} mois Airbnb à ${fmtEuro(l.airbnb_revenu_mensuel_ete)}/mois net
