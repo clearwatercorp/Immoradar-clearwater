@@ -9,6 +9,7 @@ from scrapers import leboncoin, bienici, pap, seloger
 from scrapers.common import passes_filters
 from scrapers import diag
 from strategies import location_saisonniere, marchand_de_biens
+from analysis import note_overrides
 
 app = Flask(__name__)
 
@@ -93,8 +94,24 @@ def _mediane_prix_m2(ads):
 def enrich(ad, marche=None):
     """Ajoute les scores des deux stratégies à une annonce brute. `marche` est
     la table des médianes prix/m² locales (cf. _mediane_prix_m2)."""
-    ad = dict(ad)
+    # La note libre de l'utilisateur prime : elle peut corriger charges, loyer,
+    # état/travaux, ou signaler un bien libre. On applique ces overrides avant
+    # de scorer, et on les expose pour l'affichage.
+    ad, _ov = note_overrides.apply_to_ad(ad)
     marche = marche or {}
+
+    # Localisation pour la carte : coordonnées propres de l'annonce =
+    # « précis » ; à défaut, on retombe sur le centre de la commune reconnue
+    # (position APPROXIMATIVE, signalée par une bulle grise côté carte).
+    from zones import match_commune
+    lat, lon = ad.get("lat"), ad.get("lon")
+    if lat is not None and lon is not None:
+        ad["loc_precise"] = True
+    else:
+        commune = match_commune(ad.get("ville", ""), ad.get("cp", ""))
+        if commune:
+            ad["lat"], ad["lon"] = commune["lat"], commune["lon"]
+        ad["loc_precise"] = False
     try:
         ad["loc_saisonniere"] = location_saisonniere.evaluate(ad, marche)
     except Exception as e:

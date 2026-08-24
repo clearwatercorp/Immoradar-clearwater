@@ -358,6 +358,7 @@ function parseAnnonce(raw){
     typeBien:  raw.type_bien || "",
     lat:       raw.lat,
     lon:       raw.lon,
+    locPrecise: raw.loc_precise !== false,
     distance:  raw.distance_km,
     link:      raw.link || "#",
     image:     raw.image || "",
@@ -367,10 +368,24 @@ function parseAnnonce(raw){
     charges:   raw.charges_mensuelles || null,
     noteStatut:raw.note_statut || "",
     noteTexte: raw.note_texte || "",
+    noteOverrides: raw.note_overrides || null,
     favori:    !!raw.favori,
     loc:       raw.loc_saisonniere,
     marchand:  raw.marchand_biens,
   };
+}
+
+// Récapitulatif des corrections tirées de la note de l'utilisateur.
+function overridesNote(ov){
+  if(!ov) return "";
+  const p = [];
+  if(ov.charges_mensuelles!=null) p.push(`charges ${fmt(ov.charges_mensuelles)} €/mois`);
+  if(ov.loyer_reel!=null) p.push(`loyer ${fmt(ov.loyer_reel)} €/mois`);
+  if(ov.travaux_supplementaires) p.push(`+${fmt(ov.travaux_supplementaires)} € travaux`);
+  if(ov.condition) p.push(`état « ${esc(ov.condition.label)} »`);
+  if(ov.libre) p.push("bien libre (Airbnb possible)");
+  if(!p.length) return "";
+  return `<div class="detail-note" style="background:#16241a;border-color:#00d68f44;color:#9fe0b8">📝 <strong>Votre note prise en compte :</strong> ${p.join(" · ")}.</div>`;
 }
 
 // ─── Statuts de suivi ─────────────────────────────────────────────────────
@@ -755,6 +770,7 @@ function renderCardLoc(a){
         ${a.charges?`<br/>Charges copropriété : <strong>${fmt(a.charges)} €/mois</strong> (part non récupérable déduite du cash-flow).`:""}
         ${attractiviteNote(l.attractivite)}
       </div>`:""}
+      ${overridesNote(a.noteOverrides)}
       ${noteBlock(a)}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
     </div>`:""}
@@ -825,6 +841,7 @@ function renderCardMarchand(a){
             <div class="nego-stat" style="color:${s.marge>=0?'#00d68f':'#ff6b6b'}">Marge ${fmtSigned(s.marge)} (${s.marge_pct}%)</div>
           </div>`).join("")}
       </div>`:""}
+      ${overridesNote(a.noteOverrides)}
       ${noteBlock(a)}
       <a class="btn-annonce" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
     </div>`:""}
@@ -1049,16 +1066,47 @@ function initMap(){
   markersLayer = L.layerGroup().addTo(map);
 }
 
+// Couleur du « potentiel » de l'annonce (vert = très bonne affaire).
+function potentielColor(a){
+  if(activeStrategy==="loc")
+    return a.loc?.eligibilite==="bonne" ? '#00d68f' : (a.loc?.eligibilite==="limitee" ? '#ffb347' : '#3a5a7a');
+  return {1:'#00d68f',2:'#ffb347',3:'#4fc3f7'}[a.marchand?.verdict?.priorite] || '#3a5a7a';
+}
+
+// Ouvre le profil de l'annonce DANS ImmoRadar (liste), au lieu de sortir vers
+// la source. Appelé depuis le clic sur une bulle de la carte.
+function focusCard(id){
+  currentView = "list";
+  document.querySelectorAll(".view-toggle button").forEach(b=>b.classList.toggle("active", b.dataset.view==="list"));
+  document.getElementById("map").style.display = "none";
+  document.getElementById("annonces-list").style.display = "block";
+  expandedId = id;
+  renderAll();
+  setTimeout(()=>{
+    const el = document.getElementById("card-"+id);
+    if(el){
+      el.scrollIntoView({behavior:"smooth", block:"center"});
+      el.style.transition = "box-shadow .3s";
+      el.style.boxShadow = "0 0 0 2px #7ac3f0";
+      setTimeout(()=>{ el.style.boxShadow=""; }, 1600);
+    }
+  }, 60);
+}
+window.focusCard = focusCard;
+
 function renderMap(filtered){
   if(!map) return;
   markersLayer.clearLayers();
   const withGeo = filtered.filter(a=>a.lat!=null && a.lon!=null);
   withGeo.forEach(a=>{
-    let color = '#7ac3f0';
-    if(activeStrategy==="loc") color = a.loc?.eligibilite==="bonne" ? '#00d68f' : (a.loc?.eligibilite==="limitee" ? '#ffb347' : '#3a5a7a');
-    else color = {1:'#00d68f',2:'#ffb347',3:'#4fc3f7'}[a.marchand?.verdict?.priorite] || '#3a5a7a';
-
-    const marker = L.circleMarker([a.lat, a.lon], { radius:8, color, weight:2, fillColor:color, fillOpacity:0.5 });
+    const color = potentielColor(a);
+    const precis = a.locPrecise !== false;
+    // Précis : pastille pleine de la couleur du potentiel. Approximatif :
+    // bulle à contour GRIS (adresse incertaine) avec la couleur du potentiel
+    // à l'intérieur.
+    const marker = precis
+      ? L.circleMarker([a.lat, a.lon], { radius:8, color, weight:2, fillColor:color, fillOpacity:0.55 })
+      : L.circleMarker([a.lat, a.lon], { radius:9, color:'#8a99a8', weight:3, dashArray:'3', fillColor:color, fillOpacity:0.85 });
     const metric = activeStrategy==="loc"
       ? `${adjLoc(a)?.rendement_brut_pct ?? '?'}% rendement brut`
       : `${a.marchand?.marge_pct ?? '?'}% marge (${fmtSigned(a.marchand?.marge||0)})`;
@@ -1067,8 +1115,10 @@ function renderMap(filtered){
       <div class="popup-title">${esc(a.titre)}</div>
       <div style="font-size:12px;color:#5a8aaa;margin-bottom:4px">${esc(a.ville)}${a.surface>0?" · "+a.surface+" m²":""} · ${esc(a.source)}</div>
       <div style="font-size:12px;color:#7ac3f0;margin-bottom:6px">${metric}</div>
-      <a class="popup-link" href="${safeHref(a.link)}" target="_blank" rel="noopener">Voir l'annonce →</a>
+      ${precis?"":`<div style="font-size:11px;color:#8a99a8;margin-bottom:6px">📍 Adresse approximative (centre de la commune)</div>`}
+      <button class="popup-link" style="border:none;cursor:pointer" onclick="focusCard('${esc(a.id)}')">Voir sur ImmoRadar →</button>
     `);
+    marker.on("click", ()=>marker.openPopup());
     marker.addTo(markersLayer);
   });
 }

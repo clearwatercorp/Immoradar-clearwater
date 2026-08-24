@@ -45,8 +45,10 @@ def evaluate(ad, marche=None):
     pieces = ad.get("pieces")
     ville = ad.get("ville", "")
 
-    condition = estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
-    cout_travaux = round(surface * condition["cost_m2"])
+    # L'état/les travaux peuvent être corrigés par la note de l'utilisateur
+    # (état constaté à la visite, devis de ravalement…).
+    condition = ad.get("condition_note") or estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
+    cout_travaux = round(surface * condition["cost_m2"]) + (ad.get("travaux_supplementaires") or 0)
     acquisition = cout_acquisition(prix, cout_travaux)
     investissement = acquisition["investissement_total"]
     mensualite = acquisition["mensualite_credit"]

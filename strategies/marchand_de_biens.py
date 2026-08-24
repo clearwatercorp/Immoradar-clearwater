@@ -28,8 +28,10 @@ def evaluate(ad, marche=None):
     ville = ad.get("ville", "")
     type_bien = ad.get("type_bien", "")
 
-    condition = estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
-    cout_travaux = round(surface * condition["cost_m2"])
+    # Note de l'utilisateur : peut corriger l'état et ajouter des travaux
+    # (ravalement, toiture…) constatés hors annonce.
+    condition = ad.get("condition_note") or estimate_condition(ad.get("titre", ""), ad.get("desc", ""), ad.get("dpe"))
+    cout_travaux = round(surface * condition["cost_m2"]) + (ad.get("travaux_supplementaires") or 0)
     acquisition = cout_acquisition(prix, cout_travaux)
     investissement = acquisition["investissement_total"]
 
