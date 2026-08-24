@@ -339,6 +339,8 @@ function renderLegend(){
     <span style="color:#8a6a3a">⚠️ Estimations heuristiques v1 (mots-clés + références de marché approximatives) — seront affinées avec un modèle
     entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — la recherche se lance <strong>uniquement</strong> quand vous cliquez « Rechercher » (aucun scan automatique, pour ne pas consommer inutilement).</span><br/>
     <span class="new-dot"></span> = annonce détectée pour la première fois il y a moins de 24h<br/>
+    <strong>Carte :</strong> contour <span style="color:#3a6aaa">bleu foncé</span> = adresse géolocalisée · contour <span style="color:#8a99a8">gris pointillé</span> = adresse approximative (centre commune) ·
+    l'intérieur = potentiel (<span style="color:#00d68f">vert</span> = très bonne affaire, <span style="color:#ffb347">orange</span> = correct, gris = à surveiller). Cliquer une bulle ouvre la fiche dans ImmoRadar.<br/>
     ${meta.stockage_persistant
       ? `<span style="color:#00d68f">💾 Sauvegarde durable active</span> : vos résultats et biens suivis sont conservés (Turso), même après un redémarrage du serveur.`
       : `<span style="color:#8a6a3a">⚠️ Stockage temporaire</span> : sur l'hébergeur gratuit, les résultats peuvent repartir de zéro après un redémarrage. Utilisez <strong>⬇️ Exporter</strong> pour garder vos favoris/notes (ou activez Turso, cf. render.yaml).`}
@@ -1101,12 +1103,13 @@ function renderMap(filtered){
   withGeo.forEach(a=>{
     const color = potentielColor(a);
     const precis = a.locPrecise !== false;
-    // Précis : pastille pleine de la couleur du potentiel. Approximatif :
-    // bulle à contour GRIS (adresse incertaine) avec la couleur du potentiel
-    // à l'intérieur.
+    // Convention : le CONTOUR indique la précision de l'adresse
+    //   • bleu foncé = adresse géolocalisée (précise)
+    //   • gris (pointillé) = adresse approximative (centre de la commune)
+    // et l'INTÉRIEUR indique le potentiel (vert = très bonne affaire).
     const marker = precis
-      ? L.circleMarker([a.lat, a.lon], { radius:8, color, weight:2, fillColor:color, fillOpacity:0.55 })
-      : L.circleMarker([a.lat, a.lon], { radius:9, color:'#8a99a8', weight:3, dashArray:'3', fillColor:color, fillOpacity:0.85 });
+      ? L.circleMarker([a.lat, a.lon], { radius:8, color:'#143a6e', weight:3, fillColor:color, fillOpacity:0.85 })
+      : L.circleMarker([a.lat, a.lon], { radius:8, color:'#8a99a8', weight:3, dashArray:'3', fillColor:color, fillOpacity:0.85 });
     const metric = activeStrategy==="loc"
       ? `${adjLoc(a)?.rendement_brut_pct ?? '?'}% rendement brut`
       : `${a.marchand?.marge_pct ?? '?'}% marge (${fmtSigned(a.marchand?.marge||0)})`;
