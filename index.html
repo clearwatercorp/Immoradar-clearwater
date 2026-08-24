@@ -339,8 +339,13 @@ function renderLegend(){
     <span style="color:#8a6a3a">⚠️ Estimations heuristiques v1 (mots-clés + références de marché approximatives) — seront affinées avec un modèle
     entraîné sur l'état réel des biens. Sources : Leboncoin · PAP · SeLoger · Bien'ici — la recherche se lance <strong>uniquement</strong> quand vous cliquez « Rechercher » (aucun scan automatique, pour ne pas consommer inutilement).</span><br/>
     <span class="new-dot"></span> = annonce détectée pour la première fois il y a moins de 24h<br/>
-    <strong>Carte :</strong> contour <span style="color:#3a6aaa">bleu foncé</span> = adresse géolocalisée · contour <span style="color:#8a99a8">gris pointillé</span> = adresse approximative (centre commune) ·
-    l'intérieur = potentiel (<span style="color:#00d68f">vert</span> = très bonne affaire, <span style="color:#ffb347">orange</span> = correct, gris = à surveiller). Cliquer une bulle ouvre la fiche dans ImmoRadar.<br/>
+    <strong>Carte :</strong> contour <span style="color:#3a6aaa">bleu foncé</span> = adresse géolocalisée · contour <span style="color:#8a99a8">gris pointillé</span> = adresse approximative (centre commune).
+    Intérieur = potentiel :
+    <span style="color:#e5484d">■</span> à éviter ·
+    <span style="color:#f5891f">■</span> passable ·
+    <span style="color:#9fcf3a">■</span> correct ·
+    <span style="color:#34b358">■</span> bon ·
+    <span style="color:#0a7d33">■</span> très bonne affaire. Cliquer une bulle ouvre la fiche dans ImmoRadar.<br/>
     ${meta.stockage_persistant
       ? `<span style="color:#00d68f">💾 Sauvegarde durable active</span> : vos résultats et biens suivis sont conservés (Turso), même après un redémarrage du serveur.`
       : `<span style="color:#8a6a3a">⚠️ Stockage temporaire</span> : sur l'hébergeur gratuit, les résultats peuvent repartir de zéro après un redémarrage. Utilisez <strong>⬇️ Exporter</strong> pour garder vos favoris/notes (ou activez Turso, cf. render.yaml).`}
@@ -1068,12 +1073,31 @@ function initMap(){
   markersLayer = L.layerGroup().addTo(map);
 }
 
-// Couleur du « potentiel » de l'annonce (vert = très bonne affaire).
-function potentielColor(a){
-  if(activeStrategy==="loc")
-    return a.loc?.eligibilite==="bonne" ? '#00d68f' : (a.loc?.eligibilite==="limitee" ? '#ffb347' : '#3a5a7a');
-  return {1:'#00d68f',2:'#ffb347',3:'#4fc3f7'}[a.marchand?.verdict?.priorite] || '#3a5a7a';
+// Échelle de potentiel à 5 niveaux : 0 rouge → 4 vert foncé (très bonne affaire).
+const POTENTIEL_COLORS = ['#e5484d', '#f5891f', '#9fcf3a', '#34b358', '#0a7d33'];
+const POTENTIEL_LABELS = ['À éviter', 'Passable', 'Correct', 'Bon', 'Très bonne affaire'];
+
+// Niveau (0..4) selon la stratégie active et les indicateurs RÉELS (rendement /
+// marge, avec le scénario Airbnb courant côté location).
+function potentielTier(a){
+  if(activeStrategy==="loc"){
+    const l = adjLoc(a);
+    if(!l) return 0;
+    const bail = l.bail_commercial && l.bail_commercial.sous_bail_commercial;
+    const r = l.rendement_brut_pct || 0;
+    let t = r>=9 ? 4 : r>=7.5 ? 3 : r>=6 ? 2 : r>=4.5 ? 1 : 0;
+    if((l.cashflow_mensuel_moyen||0) < -300 && t>0) t--;      // cash-flow très négatif
+    if(l.eligibilite==="peu_adaptee" && t>1) t = 1;            // profil peu adapté
+    if(bail) t = Math.min(t, 1);                              // revente/exploitation contrainte
+    return t;
+  }
+  const m = a.marchand;
+  if(!m) return 0;
+  if((m.marge||0) < 0) return 0;                             // marge négative = rouge
+  const pr = m.verdict && m.verdict.priorite;
+  return pr===1 ? 4 : pr===2 ? 3 : pr===3 ? 2 : 1;
 }
+function potentielColor(a){ return POTENTIEL_COLORS[potentielTier(a)]; }
 
 // Ouvre le profil de l'annonce DANS ImmoRadar (liste), au lieu de sortir vers
 // la source. Appelé depuis le clic sur une bulle de la carte.
