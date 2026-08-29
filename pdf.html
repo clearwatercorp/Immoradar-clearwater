@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ImmoRadar — Analyser une fiche PDF</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#080f1a;color:#c8dff0;font-family:'DM Sans',sans-serif;line-height:1.55;padding:22px 16px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-family:'DM Serif Display',serif;color:#e0eaf5;font-size:25px;margin-bottom:4px}
+  .sub{color:#4a7a9a;font-size:14px;margin-bottom:16px}
+  a.back{color:#4a7a9a;text-decoration:none;font-size:14px}
+  .drop{border:2px dashed #2a4a6a;border-radius:14px;padding:30px;text-align:center;background:#0d1621;cursor:pointer;transition:.15s}
+  .drop:hover,.drop.over{border-color:#2a6aaa;background:#0f1c2c}
+  .drop strong{color:#7ac3f0}
+  .btn{display:inline-block;background:#1a3a5a;border:1px solid #2a5a8a;border-radius:8px;color:#7ac3f0;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}
+  .btn:hover{background:#1e4a70}
+  .btn.primary{background:linear-gradient(135deg,#1a5a3a,#12331f);border-color:#2aaa6a;color:#7af0b0}
+  .card{background:#0d1621;border:1px solid #1a2d40;border-radius:14px;padding:16px 18px;margin:16px 0}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .fld{display:flex;flex-direction:column;font-size:12px;color:#6a8aaa}
+  .fld input{width:110px;background:#0a1520;border:1px solid #1a2d40;border-radius:7px;color:#cfe6fb;padding:6px 8px;font-size:14px;margin-top:2px}
+  .fld input.ville{width:140px}
+  .fld.chk{flex-direction:row;align-items:center;gap:6px;color:#8ab;margin-top:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  .strat{background:#0a1520;border:1px solid #16283a;border-radius:10px;padding:12px 14px}
+  .strat h3{font-size:13px;color:#7ac3f0;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px}
+  .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;border-bottom:1px solid #10202f}
+  .kv b{color:#e0eaf5}
+  .good{color:#3cc463}.bad{color:#ff7b7b}
+  .dup{background:#2a2416;border:1px solid #6a5320;border-radius:9px;padding:10px 14px;color:#e0c070;font-size:13px;margin-top:10px}
+  .pot{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
+  .msg{color:#8ab;font-size:14px;margin:14px 0}
+  .err{color:#ff9a9a}
+  .titre{font-size:15px;color:#dbe8f5;font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" class="back">← Retour à ImmoRadar</a>
+  <h1 style="margin-top:12px">📄 Analyser une fiche PDF</h1>
+  <p class="sub">Dépose une fiche d'annonce (mandat, export portail…). ImmoRadar en extrait les caractéristiques, calcule la rentabilité selon les 2 stratégies, et vérifie si le bien n'est pas <strong>déjà dans ta sélection</strong>. Les champs sont corrigeables avant calcul.</p>
+
+  <div class="drop" id="drop">
+    <div style="font-size:30px">📄⬆️</div>
+    <p style="margin-top:8px"><strong>Clique ou glisse un PDF ici</strong></p>
+    <p class="sub" style="margin-top:4px">Fiches « texte » (pas de scan image). Une fiche peut contenir plusieurs biens.</p>
+    <input type="file" id="file" accept="application/pdf,.pdf" style="display:none"/>
+  </div>
+
+  <div id="status" class="msg"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+const POT_COLORS=['#e5484d','#f5891f','#9fcf3a','#34b358','#0a7d33'];
+const POT_LABELS=['À éviter','Passable','Correct','Bon','Très bonne affaire'];
+function fmt(n){return Math.round(n||0).toLocaleString('fr-FR');}
+function eur(n){return fmt(n)+' €';}
+function signed(n){return (n>=0?'+':'')+fmt(n)+' €';}
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+
+function tierLoc(l){
+  if(!l) return 0;
+  const bail=l.bail_commercial&&l.bail_commercial.sous_bail_commercial;
+  const r=l.rendement_brut_pct||0;
+  let t=r>=9?4:r>=7.5?3:r>=6?2:r>=4.5?1:0;
+  if((l.cashflow_mensuel_moyen||0)<-300&&t>0)t--;
+  if(bail)t=Math.min(t,1);
+  return t;
+}
+function tierMar(m){
+  if(!m) return 0;
+  if((m.marge||0)<0) return 0;
+  const pr=m.verdict&&m.verdict.priorite;
+  return pr===1?4:pr===2?3:pr===3?2:1;
+}
+function potChip(t){return `<span class="pot" style="background:${POT_COLORS[t]}"></span>${POT_LABELS[t]}`;}
+
+let BIENS=[];  // état courant (champs éditables + analyses)
+
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.addEventListener('click',()=>fileInput.click());
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',ev=>{ if(ev.dataTransfer.files[0]) envoyer(ev.dataTransfer.files[0]); });
+fileInput.addEventListener('change',()=>{ if(fileInput.files[0]) envoyer(fileInput.files[0]); });
+
+async function envoyer(file){
+  if(file.type!=='application/pdf' && !file.name.toLowerCase().endsWith('.pdf')){ setStatus('Merci de déposer un fichier PDF.',true); return; }
+  setStatus('Lecture et analyse du PDF…');
+  document.getElementById('results').innerHTML='';
+  const fd=new FormData(); fd.append('file',file);
+  try{
+    const r=await fetch('/api/pdf/analyse',{method:'POST',body:fd});
+    const j=await r.json();
+    if(!j.ok){ setStatus('Erreur : '+(j.erreur||'analyse impossible'),true); return; }
+    if(!j.biens.length){ setStatus(j.message||'Aucun bien détecté.',true); return; }
+    BIENS=j.biens;
+    setStatus(`${j.biens.length} bien(s) détecté(s). Vérifie les champs, puis « Recalculer » si tu corriges quelque chose.`);
+    render();
+  }catch(e){ setStatus('Erreur réseau : '+e.message,true); }
+}
+function setStatus(t,err){ const s=document.getElementById('status'); s.textContent=t; s.className='msg'+(err?' err':''); }
+
+function render(){
+  document.getElementById('results').innerHTML = BIENS.map((x,i)=>carte(x,i)).join('');
+}
+
+function carte(x,i){
+  const c=x.champs, l=x.loc, m=x.marchand, dup=x.doublon;
+  const tl=tierLoc(l), tm=tierMar(m);
+  const dejaLoue=l&&l.deja_loue;
+  return `
+  <div class="card">
+    <div class="titre">${esc(c.titre||'Bien')}</div>
+    ${dup?`<div class="dup">⚠️ <strong>Doublon probable</strong> : ce bien correspond déjà à une annonce de ta sélection
+      « ${esc(dup.titre||'—')} » (${esc(dup.source)}, ${eur(dup.prix)}${dup.favori?' · déjà en favori ⭐':''}).
+      L'ajouter ne créera pas de doublon.</div>`:''}
+    <div class="row" style="margin-top:10px">
+      <label class="fld">Prix (€)<input type="number" data-i="${i}" data-k="prix" value="${c.prix||''}"/></label>
+      <label class="fld">Surface (m²)<input type="number" data-i="${i}" data-k="surface" value="${c.surface||''}"/></label>
+      <label class="fld">Pièces<input type="number" data-i="${i}" data-k="pieces" value="${c.pieces||''}"/></label>
+      <label class="fld">Charges (€/mois)<input type="number" data-i="${i}" data-k="charges_mensuelles" value="${c.charges_mensuelles!=null?c.charges_mensuelles:''}"/></label>
+      <label class="fld">Ville<input class="ville" type="text" data-i="${i}" data-k="ville" value="${esc(c.ville||'')}"/></label>
+      <label class="fld">DPE<input type="text" data-i="${i}" data-k="dpe" value="${esc(c.dpe||'')}" style="width:56px"/></label>
+      <label class="fld">Loyer réel (€/mois)<input type="number" data-i="${i}" data-k="loyer_reel" value="${c.loyer_reel||''}" placeholder="si loué"/></label>
+      <label class="fld chk"><input type="checkbox" data-i="${i}" data-k="libre" ${c.libre?'checked':''}/> libre d'occupation</label>
+      <button class="btn" style="margin-top:12px" onclick="recalc(${i})">↻ Recalculer</button>
+    </div>
+    <div class="grid">
+      <div class="strat">
+        <h3>🏖️ Location saisonnière</h3>
+        <div class="kv"><span>Potentiel</span><b>${potChip(tl)}</b></div>
+        <div class="kv"><span>Rendement brut</span><b>${l?l.rendement_brut_pct+' %':'—'}</b></div>
+        <div class="kv"><span>Cash-flow / mois</span><b class="${l&&l.cashflow_mensuel_moyen>=0?'good':'bad'}">${l?signed(l.cashflow_mensuel_moyen):'—'}</b></div>
+        ${dejaLoue?`<div class="kv"><span>Loyer actuel</span><b>${eur(l.loyer_etudiant_mensuel)}/mois 🔒</b></div>`
+          :`<div class="kv"><span>Loyer étudiant</span><b>${l?eur(l.loyer_etudiant_mensuel)+'/mois':'—'}</b></div>
+            <div class="kv"><span>Airbnb été (net)</span><b>${l?eur(l.airbnb_revenu_mensuel_ete)+'/mois':'—'}</b></div>`}
+        <div class="kv"><span>Investissement total</span><b>${l?eur(l.investissement_total):'—'}</b></div>
+      </div>
+      <div class="strat">
+        <h3>🔨 Marchand / rendement</h3>
+        <div class="kv"><span>Potentiel</span><b>${potChip(tm)}</b></div>
+        <div class="kv"><span>Verdict</span><b>${m?esc(m.verdict.label):'—'}</b></div>
+        <div class="kv"><span>Marge revente</span><b class="${m&&m.marge>=0?'good':'bad'}">${m?signed(m.marge)+' ('+m.marge_pct+'%)':'—'}</b></div>
+        <div class="kv"><span>Rendement locatif</span><b>${m?m.rendement_locatif_brut_pct+' %':'—'}</b></div>
+        <div class="kv"><span>Travaux estimés</span><b>${m?eur(m.cout_travaux):'—'}</b></div>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn primary" onclick="save(${i})">${dup?'⭐ Mettre en favori (déjà en base)':'➕ Ajouter à ma sélection'}</button>
+      <span class="sub" id="save-${i}" style="margin-left:10px"></span>
+    </div>
+  </div>`;
+}
+
+// Met à jour l'état quand on édite un champ.
+document.getElementById('results').addEventListener('input', e=>{
+  const t=e.target; if(t.dataset.i==null) return;
+  const c=BIENS[t.dataset.i].champs, k=t.dataset.k;
+  if(t.type==='checkbox') c[k]=t.checked;
+  else if(t.type==='number') c[k]= t.value===''?null:parseFloat(t.value);
+  else c[k]=t.value;
+});
+
+async function recalc(i){
+  try{
+    const r=await fetch('/api/pdf/recalc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({champs:BIENS[i].champs})});
+    const j=await r.json();
+    if(j.ok){ BIENS[i].loc=j.loc; BIENS[i].marchand=j.marchand; BIENS[i].doublon=j.doublon; render(); }
+  }catch(e){ alert('Erreur recalcul : '+e.message); }
+}
+
+async function save(i){
+  const span=document.getElementById('save-'+i);
+  span.textContent='enregistrement…';
+  try{
+    const r=await fetch('/api/pdf/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({champs:BIENS[i].champs})});
+    const j=await r.json();
+    span.innerHTML = j.ok ? (j.doublon?'✓ déjà en base, mis en favori ⭐':'✓ ajouté à votre sélection (favori ⭐)') : ('erreur : '+esc(j.erreur||''));
+  }catch(e){ span.textContent='erreur : '+e.message; }
+}
+</script>
+</body>
+</html>

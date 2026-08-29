@@ -257,6 +257,120 @@ def api_note():
     return jsonify({"ok": ok})
 
 
+@app.route("/pdf")
+def pdf_page():
+    return send_file("pdf.html")
+
+
+def _ad_from_pdf_bien(b):
+    """Construit une annonce normalisée à partir d'un bien extrait d'un PDF."""
+    desc = b.get("desc") or ""
+    if b.get("etat"):
+        desc += f" État : {b['etat']}."
+    if b.get("libre"):
+        desc += " Disponibilité : libre."
+    return {
+        "id": _pdf_id(b),
+        "source": "PDF",
+        "titre": b.get("titre") or "Bien (PDF)",
+        "desc": desc,
+        "prix": b.get("prix") or 0,
+        "surface": b.get("surface") or 0,
+        "pieces": b.get("pieces"),
+        "ville": b.get("ville") or "",
+        "cp": b.get("cp") or "",
+        "type_bien": "appartement",
+        "charges_mensuelles": b.get("charges_mensuelles"),
+        "loyer_reel": None,     # fiches PDF = biens à vendre, souvent libres
+        "dpe": b.get("dpe"),
+    }
+
+
+def _pdf_id(b):
+    import re as _re2
+    slug = _re2.sub(r"[^a-z0-9]+", "-", (b.get("ville") or "x").lower()).strip("-")
+    return f"pdf-{b.get('prix',0)}-{b.get('surface',0)}-{slug}"
+
+
+@app.route("/api/pdf/analyse", methods=["POST", "OPTIONS"])
+def api_pdf_analyse():
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+    from analysis import pdf_import
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "erreur": "aucun fichier reçu"}), 400
+    try:
+        text = pdf_import.extract_text(f.read())
+    except Exception as e:
+        return jsonify({"ok": False, "erreur": f"PDF illisible ({type(e).__name__})"}), 400
+    biens = pdf_import.parse(text)
+    if not biens:
+        return jsonify({"ok": True, "biens": [], "message": "Aucun bien détecté dans le PDF (texte peut-être scanné/image)."})
+
+    existing = storage.get_all_ads()
+    marche = _mediane_prix_m2(existing)
+    out = []
+    for b in biens:
+        ad = _ad_from_pdf_bien(b)
+        loc = location_saisonniere.evaluate(ad, marche)
+        mar = marchand_de_biens.evaluate(ad, marche)
+        dup = pdf_import.find_duplicate(b, existing)
+        out.append({
+            "champs": b,
+            "id": ad["id"],
+            "loc": loc,
+            "marchand": mar,
+            "doublon": ({"id": dup["id"], "titre": dup.get("titre"), "prix": dup.get("prix"),
+                         "ville": dup.get("ville"), "source": dup.get("source"),
+                         "favori": bool(dup.get("favori"))} if dup else None),
+        })
+    return jsonify({"ok": True, "biens": out})
+
+
+@app.route("/api/pdf/recalc", methods=["POST", "OPTIONS"])
+def api_pdf_recalc():
+    """Recalcule l'analyse d'UN bien après correction manuelle des champs."""
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+    from analysis import pdf_import
+    b = (request.get_json(force=True, silent=True) or {}).get("champs") or {}
+    existing = storage.get_all_ads()
+    marche = _mediane_prix_m2(existing)
+    ad = _ad_from_pdf_bien(b)
+    # loyer indiqué à la main éventuellement (bien déjà loué)
+    if b.get("loyer_reel"):
+        ad["loyer_reel"] = b["loyer_reel"]
+    loc = location_saisonniere.evaluate(ad, marche)
+    mar = marchand_de_biens.evaluate(ad, marche)
+    dup = pdf_import.find_duplicate(b, existing)
+    return _cors(jsonify({"ok": True, "id": ad["id"], "loc": loc, "marchand": mar,
+                          "doublon": ({"id": dup["id"], "titre": dup.get("titre"), "prix": dup.get("prix"),
+                                       "ville": dup.get("ville"), "source": dup.get("source"),
+                                       "favori": bool(dup.get("favori"))} if dup else None)}))
+
+
+@app.route("/api/pdf/save", methods=["POST", "OPTIONS"])
+def api_pdf_save():
+    """Enregistre un bien PDF dans la sélection (favori), avec dédoublonnage :
+    si un bien équivalent existe déjà, on le met simplement en favori."""
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+    b = (request.get_json(force=True, silent=True) or {}).get("champs") or {}
+    if not (b.get("prix") and b.get("surface")):
+        return jsonify({"ok": False, "erreur": "prix et surface requis"}), 400
+    from analysis import pdf_import
+    existing = storage.get_all_ads()
+    dup = pdf_import.find_duplicate(b, existing)
+    if dup:
+        storage.set_favori(dup["id"], True)
+        return _cors(jsonify({"ok": True, "doublon": True, "id": dup["id"]}))
+    ad = _ad_from_pdf_bien(b)
+    storage.upsert_ads([ad])
+    storage.set_favori(ad["id"], True)
+    return _cors(jsonify({"ok": True, "doublon": False, "id": ad["id"]}))
+
+
 @app.route("/api/export")
 def api_export():
     """Sauvegarde hors-ligne des biens suivis (favoris + notes) : un fichier

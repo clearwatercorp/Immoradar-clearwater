@@ -6,3 +6,4 @@ cloudscraper==1.2.71
 curl_cffi==0.16.0
 lbc==1.1.5
 libsql-experimental==0.0.55
+pypdf==5.1.0
